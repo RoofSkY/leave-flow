@@ -1,0 +1,165 @@
+/* 휴가원 양식 (원본 HWP 양식 재현). 공통 클래스는 components/print/print.css */
+
+.lf-doc-title {
+  margin: 2mm 0 5mm;
+  font-size: 24pt;
+  letter-spacing: 1.6em;
+  text-indent: 1.6em;
+}
+
+/* 원본처럼 결재란 바로 아래 표 */
+.approval:has(+ .lf-doc) {
+  margin-bottom: 3mm;
+}
+
+.lf-doc > tbody > tr > th {
+  font-size: 11pt;
+  letter-spacing: 0.02em;
+}
+.lf-doc .lf-doc-row-name > th,
+.lf-doc .lf-doc-row-name > td {
+  height: 15mm;
+}
+.lf-doc .lf-doc-name {
+  font-size: 11pt;
+  font-weight: 600;
+}
+.lf-doc .lf-doc-small {
+  font-size: 9.5pt;
+}
+
+.lf-doc .lf-doc-periods {
+  height: 19mm;
+  font-size: 10.5pt;
+  line-height: 1.5;
+}
+.lf-doc-periods-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 4mm;
+  font-size: 10pt;
+}
+
+/* 휴가현황: 머리줄(연도·총휴가일…)과 종류별 줄 */
+.lf-doc .lf-doc-balance-head > th + th {
+  height: 7mm;
+  padding: 0.5mm;
+  font-size: 9pt;
+}
+.lf-doc .lf-doc-balance-head > .lf-doc-year,
+.lf-doc .lf-doc-balance-row > .lf-doc-year {
+  padding: 0.5mm;
+  font-size: 11pt;
+}
+.lf-doc .lf-doc-balance-row > td {
+  height: 8.5mm;
+  padding: 0.5mm;
+  font-size: 9pt;
+}
+.lf-doc .lf-doc-balance-row > .lf-doc-type {
+  font-size: 9.5pt;
+  overflow-wrap: anywhere;
+}
+.lf-doc .lf-doc-amount span {
+  white-space: nowrap;
+}
+
+.lf-doc .lf-doc-detail-head {
+  font-weight: 500;
+}
+.lf-doc .lf-doc-detail {
+  padding: 3mm 3mm 2mm;
+  text-align: left;
+  vertical-align: top;
+}
+.lf-doc .doc-check-hint {
+  font-size: 10pt;
+}
+.lf-doc .doc-checks {
+  margin: 2mm 0 0;
+  font-size: 11.5pt;
+}
+.lf-doc-line {
+  margin-top: 3.5mm;
+  font-size: 11.5pt;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+.lf-doc-faint {
+  color: #8a8a8a;
+}
+/* 원본처럼 칸 폭보다 좁은 상자 */
+.lf-doc .lf-doc-box {
+  width: 85%;
+  margin-top: 2mm;
+}
+.lf-doc .doc-closing {
+  margin-top: 9mm;
+}
+
+/* ---------- 한 장에 맞추기 (LeavePrintSheet 가 넘침을 재어 단계별로 붙임) ---------- */
+.lf-doc-title.is-compact {
+  margin: 0 0 3mm;
+}
+.lf-doc.is-compact .lf-doc-row-name > th,
+.lf-doc.is-compact .lf-doc-row-name > td {
+  height: 10mm;
+  padding-top: 1mm;
+  padding-bottom: 1mm;
+}
+.lf-doc.is-compact .lf-doc-periods {
+  height: auto;
+  padding-top: 1.2mm;
+  padding-bottom: 1.2mm;
+  font-size: 10pt;
+  line-height: 1.4;
+}
+.lf-doc.is-compact .lf-doc-periods-grid {
+  font-size: 9.5pt;
+}
+.lf-doc.is-compact .lf-doc-balance-head > th + th,
+.lf-doc.is-compact .lf-doc-balance-row > td {
+  height: auto;
+  padding-top: 0.4mm;
+  padding-bottom: 0.4mm;
+}
+.lf-doc.is-compact .lf-doc-detail {
+  padding-top: 2mm;
+}
+.lf-doc.is-compact .doc-checks {
+  margin: 1mm 0 0.5mm;
+  font-size: 10pt;
+}
+.lf-doc.is-compact .lf-doc-line {
+  margin-top: 1.5mm;
+  font-size: 10pt;
+}
+.lf-doc.is-compact .lf-doc-box {
+  padding: 2mm;
+  font-size: 8.5pt;
+  line-height: 1.35;
+}
+.lf-doc.is-compact .doc-closing {
+  margin-top: 2mm;
+}
+
+/* 줄여도 넘치면 잘라 버리지 않고 다음 장으로 이어서 (화면 미리보기도 전부 보이게) */
+.print-sheet:has(> .lf-doc.is-overflow) {
+  height: auto;
+  min-height: 297mm;
+  overflow: visible;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* 출력 화면 머리의 넘침 경고 */
+.lf-print-warn {
+  color: var(--warning);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.lf-print-msg {
+  max-width: 210mm;
+  margin: 24px auto;
+}

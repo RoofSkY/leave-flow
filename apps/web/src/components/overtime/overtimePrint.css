@@ -1,0 +1,133 @@
+/* 시간외근무 신청서 A4 양식 (print.css 공통 양식 위에 이 양식만의 배치) */
+
+.otp-root {
+  height: 100%;
+}
+
+.otp {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 4mm 6mm 0;
+}
+.otp-title {
+  margin: 3mm 0 5mm;
+  word-spacing: 0.35em;
+}
+.otp-title-soldier {
+  letter-spacing: 0.02em;
+  word-spacing: 0.25em;
+}
+
+.otp-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  margin-bottom: 3mm;
+  border-top: 1px solid #000;
+  border-left: 1px solid #000;
+}
+.otp-general {
+  grid-template-columns: 31mm 32.7mm 35.8mm 22mm 1fr;
+  grid-template-rows: minmax(17mm, auto) minmax(25.5mm, auto) 7.5mm 15mm 1fr;
+}
+.otp-soldier {
+  grid-template-columns: 31mm 37.6mm 9.9mm 45.8mm 1fr;
+  grid-template-rows: minmax(18.5mm, auto) minmax(19.5mm, auto) minmax(5mm, auto) minmax(16mm, auto) 1fr;
+}
+
+.otp-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 1mm 2mm;
+  border-right: 1px solid #000;
+  border-bottom: 1px solid #000;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.otp-head {
+  font-weight: 600;
+}
+.otp-spaced {
+  white-space: pre;
+  letter-spacing: 0.15em;
+}
+.otp-strong {
+  font-weight: 600;
+}
+.otp-small {
+  font-size: 8.5pt;
+  padding-top: 0.5mm;
+  padding-bottom: 0.5mm;
+}
+.otp-lines {
+  line-height: 1.45;
+}
+.otp-stamp {
+  align-items: flex-end;
+  padding-right: 3mm;
+}
+
+/* 상세내용: 남은 높이를 모두 쓰고, 근무내역 상자는 넘치면 글자를 줄임 */
+.otp-detail {
+  position: relative;
+  align-items: stretch;
+  justify-content: flex-start;
+  min-height: 0;
+  padding: 3mm 10mm 0 3mm;
+  text-align: left;
+}
+.otp-checks {
+  margin: 1.5mm 0 0 2mm;
+  gap: 1mm 9mm;
+  font-size: 12pt;
+}
+.otp-label {
+  margin: 2.5mm 0 2.5mm 1mm;
+  font-size: 12pt;
+}
+/* 평소에는 원본처럼 56mm, 글이 넘치면 flex-grow 로 아래 빈 공간까지 늘림 (WorkDetailsBox) */
+.otp-box {
+  flex: 0 1 56mm;
+  min-height: 18mm;
+  overflow: hidden;
+}
+.otp-clipped {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 1mm;
+  color: var(--danger);
+  font-size: 9pt;
+  text-align: center;
+}
+.otp-closing {
+  margin: 10mm 0 6mm;
+  font-size: 12pt;
+}
+
+/* 도구 막대 안내 문구 */
+.otp-notice {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.otp-notice-warn {
+  color: var(--warning);
+  font-weight: 500;
+}
+
+@media print {
+  .otp-root {
+    height: auto;
+  }
+  .otp-clipped {
+    display: none;
+  }
+}

@@ -1,0 +1,409 @@
+/* 달력 화면 (Notion Calendar 느낌): FullCalendar 기본 모양을 덮어씀 */
+
+.lf-cal-page {
+  position: relative;
+  display: flex;
+  height: 100%;
+  min-height: 560px;
+}
+
+.lf-cal-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px var(--gutter) 16px;
+}
+
+.lf-cal-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.lf-cal-title {
+  margin: 0 4px;
+  font-size: 20px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.lf-cal-spinner {
+  width: 14px;
+  height: 14px;
+}
+.lf-cal-error {
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--danger);
+}
+.lf-cal-body {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 월/주 전환 */
+.lf-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius);
+  background: var(--bg-hover);
+}
+.lf-seg button {
+  height: 26px;
+  min-width: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.lf-seg button[aria-pressed="true"] {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---------- FullCalendar ---------- */
+.lf-cal-body .fc {
+  --fc-border-color: var(--border);
+  --fc-page-bg-color: var(--bg);
+  --fc-neutral-bg-color: var(--bg-subtle);
+  --fc-today-bg-color: transparent;
+  --fc-highlight-color: rgba(35, 131, 226, 0.12);
+  --fc-now-indicator-color: var(--danger);
+  --fc-event-bg-color: transparent;
+  --fc-event-border-color: transparent;
+  --fc-event-text-color: var(--text);
+  --fc-small-font-size: 12px;
+  font-size: 13px;
+}
+.lf-cal-body .fc .fc-scrollgrid {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* 요일 머리 */
+.lf-cal-body .fc .fc-col-header-cell {
+  border-left-color: transparent;
+  border-right-color: transparent;
+  background: var(--bg);
+}
+.lf-cal-body .fc .fc-col-header-cell-cushion {
+  display: block;
+  padding: 6px 4px;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 12px;
+  text-decoration: none;
+}
+.lf-cal-body .fc .fc-day-sun .lf-dow {
+  color: var(--holiday);
+}
+
+/* 날짜 칸 */
+.lf-cal-body .fc .lf-weekend {
+  background: var(--bg-weekend);
+}
+.lf-cal-body .fc .lf-holiday {
+  background: var(--bg-holiday);
+}
+.lf-cal-body .fc .lf-closed {
+  background: repeating-linear-gradient(135deg, var(--bg-subtle) 0 6px, var(--bg) 6px 12px);
+}
+.lf-cal-body .fc .fc-daygrid-day-top {
+  flex-direction: row;
+}
+.lf-cal-body .fc .fc-daygrid-day-number {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 4px 2px;
+  color: inherit;
+  text-decoration: none;
+}
+.lf-day-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+.lf-day-num {
+  flex: none;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border-radius: 11px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.lf-cal-body .fc-day-other .lf-day-num {
+  color: var(--text-faint);
+}
+.lf-cal-body .fc-day-sun .lf-day-num,
+.lf-cal-body .lf-holiday .lf-day-num {
+  color: var(--holiday);
+}
+.lf-cal-body .lf-day-num.is-today {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+.lf-hol-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--holiday);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.lf-hol-name.is-center {
+  color: var(--warning);
+}
+
+/* + 버튼: 칸에 마우스를 올리면 좌상단에 */
+.lf-add {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.lf-cal-body .fc-daygrid-day:hover .lf-add,
+.lf-cal-body .fc-col-header-cell:hover .lf-add,
+.lf-add:focus-visible {
+  opacity: 1;
+}
+.lf-add:hover {
+  background: var(--bg-active);
+  color: var(--text);
+}
+@media (hover: none) {
+  .lf-add {
+    opacity: 0.6;
+  }
+}
+
+/* 일정 */
+.lf-cal-body .fc .fc-event {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+}
+.lf-cal-body .fc .fc-daygrid-event {
+  margin: 1px 4px 0;
+}
+.lf-cal-body .fc .fc-daygrid-block-event .fc-event-main {
+  padding: 0;
+}
+.lf-ev {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding: 1px 6px;
+  border-left: 3px solid var(--ev-color);
+  border-radius: var(--radius-sm);
+  background: var(--ev-bg);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 18px;
+}
+.lf-ev-title {
+  overflow: hidden;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.lf-ev-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.lf-cal-body .fc-event:hover .lf-ev {
+  filter: brightness(0.96);
+}
+.lf-cal-body .fc-daygrid-event:not(.fc-event-start) .lf-ev {
+  border-left-color: transparent;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.lf-cal-body .fc-daygrid-event:not(.fc-event-end) .lf-ev {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.lf-ev.is-cancelled {
+  opacity: 0.5;
+}
+.lf-ev.is-cancelled .lf-ev-title {
+  text-decoration: line-through;
+}
+.lf-cal-body .fc .fc-daygrid-more-link {
+  margin-left: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.lf-cal-body .fc .fc-popover {
+  border-color: var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+.lf-cal-body .fc .fc-popover-header {
+  background: var(--bg-subtle);
+}
+
+/* 주 보기 */
+.lf-wk-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+}
+.lf-wk-head .lf-day-num {
+  margin-left: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+.lf-wk-head .lf-hol-name {
+  max-width: 60px;
+}
+.lf-cal-body .fc .fc-timegrid-slot {
+  height: 22px;
+}
+.lf-cal-body .fc .fc-timegrid-slot-minor {
+  border-top-style: none;
+}
+.lf-cal-body .fc .fc-timegrid-slot-label-cushion {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.lf-cal-body .fc .fc-timegrid-event .lf-ev {
+  padding: 3px 6px;
+}
+.lf-cal-body .fc .fc-timegrid-event .lf-ev-title {
+  white-space: normal;
+}
+.lf-cal-body .fc .fc-timegrid-event-harness-inset .fc-timegrid-event {
+  box-shadow: 0 0 0 1px var(--bg);
+}
+
+/* ---------- 부재자 패널 ---------- */
+.lf-absence {
+  flex: none;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 14px 14px 20px;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  overflow-y: auto;
+}
+.lf-absence-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lf-absence-head h2 {
+  font-size: 15px;
+}
+.lf-absence-section h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.lf-absence-section h3 .muted {
+  font-weight: 400;
+  font-size: 12px;
+}
+.lf-absence-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lf-absence-row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.lf-absence-row:hover {
+  background: var(--bg-hover);
+}
+.lf-absence-name {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.lf-absence-type {
+  margin-left: 4px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.lf-absence-dur {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.lf-absence-time {
+  grid-column: 2 / 4;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.lf-absence-empty {
+  padding: 6px 8px;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+/* 좁은 화면: 패널을 달력 위에 겹쳐 띄움 */
+@media (max-width: 960px) {
+  .lf-absence {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+    box-shadow: var(--shadow-lg);
+  }
+}

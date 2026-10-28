@@ -1,0 +1,9 @@
+{
+  // Code Runner ▶(Run Code): 어떤 파일을 열어 두든 leave-flow 개발 서버 + 화면을 띄운다
+  "code-runner.executorMapByGlob": {
+    "*": "cd \"$workspaceRoot\" && npm run dev"
+  },
+  // 터미널에서 실행해야 Ctrl+C로 서버까지 깔끔하게 꺼진다
+  "code-runner.runInTerminal": true,
+  "code-runner.saveAllFilesBeforeRun": true
+}

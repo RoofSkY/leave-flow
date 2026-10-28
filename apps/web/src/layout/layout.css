@@ -1,0 +1,129 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--topbar-height);
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex: none;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 12px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+.brand:hover {
+  text-decoration: none;
+}
+.brand-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--accent);
+  position: relative;
+}
+.brand-mark::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 5px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.85);
+}
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.nav-link:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  text-decoration: none;
+}
+.nav-link.active {
+  background: var(--bg-active);
+  color: var(--text);
+}
+
+.app-main {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px var(--gutter) 40px;
+}
+
+/* 관리 화면: 왼쪽 메뉴 + 내용 */
+.admin {
+  display: flex;
+  min-height: 100%;
+}
+.admin-nav {
+  width: var(--sidebar-width);
+  flex: none;
+  padding: 16px 8px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.admin-nav-group {
+  padding: 12px 10px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-faint);
+}
+.admin-nav .nav-link {
+  width: 100%;
+}
+.admin-content {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  :root {
+    --gutter: 16px;
+  }
+  .topbar {
+    overflow-x: auto;
+  }
+  .admin {
+    flex-direction: column;
+  }
+  .admin-nav {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 8px;
+  }
+  .admin-nav-group {
+    display: none;
+  }
+  .admin-nav .nav-link {
+    width: auto;
+  }
+}

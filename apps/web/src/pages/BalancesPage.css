@@ -1,0 +1,94 @@
+/* 잔여 현황 */
+.bal-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 16px;
+}
+.bal-table th,
+.bal-table td {
+  vertical-align: middle;
+}
+.bal-sticky {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--bg);
+  min-width: 150px;
+}
+.bal-table thead .bal-sticky {
+  background: var(--bg-subtle);
+}
+.bal-table tbody tr:hover .bal-sticky {
+  background: var(--bg-subtle);
+}
+.bal-employee {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+  text-align: left;
+  color: var(--text);
+}
+.bal-employee > span:last-child {
+  display: flex;
+  flex-direction: column;
+}
+.bal-name {
+  font-weight: 600;
+}
+.bal-dept {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.bal-head {
+  min-width: 132px;
+  text-align: right !important;
+}
+.bal-head-mode {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-faint);
+}
+.bal-head-used {
+  min-width: 100px;
+}
+.bal-table .bal-cell {
+  text-align: right;
+  white-space: nowrap;
+}
+.bal-remaining {
+  font-size: 15px;
+  font-weight: 700;
+}
+.bal-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.bal-used {
+  color: var(--text-muted);
+}
+.bal-cell.is-negative .bal-remaining {
+  color: var(--danger);
+}
+.bal-cell.is-zero .bal-remaining,
+.bal-cell.is-zero .bal-used {
+  color: var(--text-faint);
+  font-weight: 500;
+}
+/* 같은 표시 이름의 종류가 한 직원에게 둘 이상 (소속·구분이 바뀐 직원) */
+.bal-split + .bal-split {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+.bal-split.is-negative .bal-remaining {
+  color: var(--danger);
+}
+.bal-split.is-zero .bal-remaining {
+  color: var(--text-faint);
+  font-weight: 500;
+}

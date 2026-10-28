@@ -1,0 +1,27 @@
+node_modules/
+dist/
+release/
+*.tsbuildinfo
+coverage/
+
+# 공개 저장소: 실제 데이터·백업·설정은 절대 커밋하지 않음
+data/
+backups/
+logs/
+updates/
+versions/
+node/
+state.json
+config.json
+*.db
+*.db-*
+*.sqlite
+.env
+.env.*
+config.local.json
+
+# 원본 양식(HWP)·개발 메모
+.dev/
+
+# 브라우저 자동화 도구 기록
+.playwright-mcp/

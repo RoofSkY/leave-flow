@@ -1,0 +1,20 @@
+{
+  "name": "@leave-flow/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/index.ts",
+    "build": "node build.mjs",
+    "start": "node --disable-warning=ExperimentalWarning dist/server.mjs"
+  },
+  "dependencies": {
+    "@fastify/static": "^10.1.6",
+    "@leave-flow/shared": "^0.1.0",
+    "date-holidays": "^3.37.0",
+    "exceljs": "^4.4.0",
+    "fastify": "^5.12.7",
+    "fflate": "^0.8.3",
+    "zod": "^4.6.7"
+  }
+}

@@ -1,0 +1,112 @@
+/* 관리 > 기준정보 화면 (직원·휴가 종류·부여 내역·기존 잔여량·설정) */
+
+.masters-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+.masters-toolbar .field {
+  flex: 1 1 140px;
+  max-width: 220px;
+}
+
+.masters-section {
+  margin-bottom: 16px;
+}
+
+.cell-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.cell-note {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cell-sub {
+  display: block;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  white-space: nowrap;
+}
+.row-hint {
+  font-size: 12px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.empty-guide {
+  max-width: 460px;
+  margin: 0;
+  line-height: 1.6;
+}
+.empty-examples {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* 설정 화면 */
+.settings-card {
+  max-width: 680px;
+}
+.settings-item-desc {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 12px;
+}
+.card > .settings-item-desc {
+  margin-bottom: 12px;
+}
+.settings-time-field {
+  width: 140px;
+}
+
+/* 소속·구분 목록 */
+.dept-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.dept-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.dept-row:last-child {
+  border-bottom: none;
+}
+.dept-name {
+  font-weight: 500;
+}
+.dept-count {
+  font-size: 12px;
+}
+.dept-edit {
+  flex: 1;
+}

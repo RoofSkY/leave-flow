@@ -1,0 +1,198 @@
+/* 시각 선택 (TimePicker) */
+.time-input {
+  width: 100%;
+  min-width: 84px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.time-pop {
+  position: fixed;
+  z-index: 150;
+  padding: 10px;
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  box-shadow: var(--shadow-lg);
+}
+.time-pop-label {
+  margin: 2px 2px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-faint);
+}
+.time-pop-hours,
+.time-pop-minutes {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.time-chip {
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  color: var(--text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.time-chip:hover {
+  background: var(--bg-hover);
+}
+.time-chip.is-active {
+  border-color: var(--accent);
+}
+.time-chip.is-selected {
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+.time-pop-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.time-pop-empty {
+  padding: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* 직원 여러 명 고르기 (EmployeeMultiSelect) */
+.emp-multi {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+.emp-multi[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.emp-multi-tools {
+  display: flex;
+  gap: 8px;
+}
+.emp-multi-depts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.emp-multi-dept {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 13px;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.emp-multi-dept:hover {
+  background: var(--bg-hover);
+}
+.emp-multi-dept.is-on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+.emp-multi-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 2px 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.emp-multi-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.emp-multi-item:hover {
+  background: var(--bg-hover);
+}
+.emp-multi-item.is-checked {
+  background: var(--accent-soft);
+}
+.emp-multi-item input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.emp-multi-name {
+  font-weight: 500;
+}
+.emp-multi-empty {
+  padding: 8px;
+  font-size: 13px;
+}
+.emp-multi-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  font-size: 13px;
+}
+
+/* 직원 필터 (EmployeeFilter): 버튼 + 버튼 아래에 뜨는 창 */
+.emp-filter-on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+.emp-filter-on:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+.emp-filter-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+}
+.emp-filter-pop {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 12px 14px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  box-shadow: var(--shadow-lg);
+}
+.emp-filter-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.emp-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.emp-filter-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.emp-filter-emp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.emp-filter-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-faint);
+}

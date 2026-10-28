@@ -1,0 +1,66 @@
+# 태그 v<버전> 을 push 하면 테스트·타입 검사 후 배포 파일을 만들어 GitHub Release 에 올린다.
+# 사무실 서버는 이 Release 를 자동으로 받아 업데이트한다 (docs/운영가이드.md "새 버전 배포").
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # 사무실 서버가 Windows 라서 Windows 에서만 생기는 문제(다른 프로세스가 연 파일을 바꿔 끼우지 못하는 등)도 확인
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+
+  release:
+    needs: test-windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: 태그와 package.json 버전 확인
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "v${VERSION}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::태그(${GITHUB_REF_NAME})와 package.json 버전(v${VERSION})이 다릅니다."
+            exit 1
+          fi
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run package
+
+      - name: GitHub Release 만들기
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "release/leave-flow-${VERSION}.zip" \
+            "release/leave-flow-${VERSION}.zip.sha256" \
+            --title "leave-flow ${VERSION}" \
+            --generate-notes
