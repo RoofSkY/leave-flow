@@ -341,7 +341,7 @@ export function SystemPage() {
             />
             {data.lastBackupError && <Callout tone="danger">{data.lastBackupError}</Callout>}
             {!data.nasBackupDir && (
-              <Callout>config.json 의 nasBackupDir 에 NAS 공유폴더를 지정하면 백업을 NAS 에도 복사합니다.</Callout>
+              <Callout>설정 화면의 NAS 백업 폴더에 공유폴더를 지정하면 백업을 NAS 에도 복사합니다.</Callout>
             )}
             <div className="system-actions">
               <Button variant="primary" onClick={onBackup} disabled={busy}>

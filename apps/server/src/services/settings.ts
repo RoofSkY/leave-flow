@@ -24,8 +24,8 @@ const WORK_START_KEY = "employee.defaultWorkStart";
 const WORK_END_KEY = "employee.defaultWorkEnd";
 
 /** 직원 근무시간 기본값 (설정하지 않았을 때) */
-export const DEFAULT_WORK_START = "09:00";
-export const DEFAULT_WORK_END = "18:00";
+const DEFAULT_WORK_START = "09:00";
+const DEFAULT_WORK_END = "18:00";
 
 export function getSettings(db: Db): Settings {
   return {

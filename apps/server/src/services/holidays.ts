@@ -11,7 +11,7 @@ const RECHECK_MS = 6 * 60 * 60 * 1000;
 
 const korea = new Holidays("KR");
 
-export interface PublicHolidayDay {
+interface PublicHolidayDay {
   date: string;
   name: string;
 }
@@ -64,7 +64,7 @@ export function insertAutoHolidays(db: Db, years: readonly number[], at: string)
 }
 
 /** 자동 등록 범위: 올해 기준 config.holidayYearsBefore ~ holidayYearsAfter */
-export function holidaySyncYears(ctx: AppContext): number[] {
+function holidaySyncYears(ctx: AppContext): number[] {
   const year = yearOf(ctx.today());
   const years: number[] = [];
   for (let y = year - ctx.config.holidayYearsBefore; y <= year + ctx.config.holidayYearsAfter; y++) years.push(y);

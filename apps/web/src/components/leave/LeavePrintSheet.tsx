@@ -1,6 +1,7 @@
 import { dayMinutesOf, formatDotDate, formatLeaveMinutes, formatPeriod, type LeavePrintData } from "@leave-flow/shared";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ApprovalBox, DocCheck, DocFooterLogo, PrintSheet } from "../print/PrintShell.tsx";
+import { requestPeriods } from "./leaveQueries.ts";
 import "./leavePrint.css";
 
 
@@ -110,8 +111,9 @@ export function LeavePrintSheet({
     onOverflow?.(over);
   }, [data, level, measuring, onOverflow]);
 
-  // 항목이 많으면 휴가기간을 두 줄씩
-  const twoColumns = r.items.length > 4;
+  // 이어지는 항목은 한 구간으로. 구간이 많으면 휴가기간을 두 줄씩
+  const periods = requestPeriods(r);
+  const twoColumns = periods.length > 4;
   const boxMm = measuring ? BOX_MM : fit.boxMm;
 
   return (
@@ -148,8 +150,8 @@ export function LeavePrintSheet({
             <th>휴가기간</th>
             <td colSpan={8} className="lf-doc-periods">
               <div className={twoColumns ? "lf-doc-periods-grid" : undefined}>
-                {r.items.map((i) => (
-                  <div key={i.id}>{formatPeriod(i.startAt, i.endAt).replace(" ~ ", "~")}</div>
+                {periods.map((p) => (
+                  <div key={p.key}>{formatPeriod(p.startAt, p.endAt).replace(" ~ ", "~")}</div>
                 ))}
               </div>
             </td>

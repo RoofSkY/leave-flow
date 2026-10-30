@@ -19,7 +19,8 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$InstallDir = "C:\leave-flow",
+  # 없으면 설치되어 있는 폴더 (예약 작업 기준)
+  [string]$InstallDir,
   [int]$Port,
   [string]$NasBackupDir,
   # NAS 백업 끄기 (nasBackupDir = null)
@@ -34,7 +35,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ServiceName = "leave-flow"
+$TaskName = "leave-flow"
 $FirewallRule = "leave-flow"
 
 function Fail($msg) { Write-Host "설정을 바꾸지 못했습니다: $msg" -ForegroundColor Red; exit 1 }
@@ -46,6 +47,22 @@ function Health-Url($cfgHost, $port) {
   elseif ($h.Contains(":") -and -not $h.StartsWith("[")) { $h = "[$h]" }
   return "http://${h}:$port/api/health"
 }
+# 트레이(tray.ps1)를 끄면 launcher 가 서버와 함께 정상 종료함. 15초 안에 끝나지 않으면 이 설치 폴더의 node 만 강제 종료
+function Stop-LeaveFlow {
+  $trayScript = Join-Path $InstallDir "tray.ps1"
+  Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($trayScript, [StringComparison]::OrdinalIgnoreCase) -ge 0 } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  $nodeDir = Join-Path $InstallDir "node"
+  $deadline = (Get-Date).AddSeconds(15)
+  for (;;) {
+    $left = @(Get-Process -Name node -ErrorAction SilentlyContinue |
+      Where-Object { $_.Path -and $_.Path.StartsWith($nodeDir, [StringComparison]::OrdinalIgnoreCase) })
+    if ($left.Count -eq 0) { return }
+    if ((Get-Date) -gt $deadline) { $left | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; return }
+    Start-Sleep -Milliseconds 500
+  }
+}
 # 끄기를 뜻하는 값 (빈 값은 PowerShell 5.1 에서 전달되지 않으므로 none/off 도 받음)
 function Is-Off($value) { return (-not $value) -or ([string]$value).Trim() -in @("none", "off", "null") }
 
@@ -55,6 +72,11 @@ if ($DisableUpdates -and $PSBoundParameters.ContainsKey("UpdateRepo")) { Fail "-
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
   Fail "관리자 권한이 필요합니다. PowerShell 을 '관리자 권한으로 실행'한 뒤 다시 실행하세요."
+}
+if (-not $InstallDir) {
+  $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+  if (-not ($task -and $task.Actions[0].WorkingDirectory)) { Fail "설치된 leave-flow 를 찾을 수 없습니다. -InstallDir 로 설치 폴더를 지정하세요." }
+  $InstallDir = $task.Actions[0].WorkingDirectory
 }
 
 $configPath = Join-Path $InstallDir "config.json"
@@ -112,14 +134,12 @@ if ($newPort -ne $oldPort) {
 }
 
 # 다시 시작
-if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
-  Restart-Service -Name $ServiceName -Force
-} elseif (Get-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue) {
-  Stop-ScheduledTask -TaskName $ServiceName
-  Start-Sleep -Seconds 2
-  Start-ScheduledTask -TaskName $ServiceName
+if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
+  Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+  Stop-LeaveFlow
+  Start-ScheduledTask -TaskName $TaskName
 } else {
-  Fail "등록된 서비스·예약 작업이 없습니다. install.ps1 로 다시 설치하세요."
+  Fail "등록된 예약 작업이 없습니다. install.ps1 로 다시 설치하세요."
 }
 
 $healthUrl = Health-Url $config.host $newPort

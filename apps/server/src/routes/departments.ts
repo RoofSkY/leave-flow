@@ -21,7 +21,7 @@ function departmentFromRow(r: Row): Department {
 }
 
 /** 표시 순서, 이름순 */
-export function listDepartments(db: Db): Department[] {
+function listDepartments(db: Db): Department[] {
   return queryAll(db, `${SELECT} ORDER BY d.sort_order, d.name`).map(departmentFromRow);
 }
 

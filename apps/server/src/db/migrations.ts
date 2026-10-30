@@ -3,7 +3,7 @@
 // 기록용 일시(created_at 등)는 로컬 "YYYY-MM-DD HH:MM:SS".
 // 처음 설치 시 모든 테이블은 비어 있다 (휴가 종류도 미리 넣지 않음). 법정공휴일만 서버 시작 시 자동 등록.
 
-export interface Migration {
+interface Migration {
   version: number;
   name: string;
   sql: string;

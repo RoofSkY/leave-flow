@@ -1,11 +1,12 @@
 // 휴가원·달력·부재자 조회 (키는 qk 기준)
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { mergeLeavePeriods } from "@leave-flow/shared";
 import type { Absences, CalendarEvent, DocStatus, LeavePrintData, LeaveRequest, WorkSchedule } from "@leave-flow/shared";
 import { api, qs } from "../../lib/api.ts";
 import { qk } from "../../lib/queries.ts";
 
 /** 달력 일정 + 휴가원에 저장된 신청(수정) 시점 근무 일정 (주 보기에서 날마다 나눌 때 사용) */
-export type ScheduledCalendarEvent = CalendarEvent & WorkSchedule;
+type ScheduledCalendarEvent = CalendarEvent & WorkSchedule;
 
 /** 취소된 일정도 함께 받아 화면에서 거름 (보기 전환 시 다시 부르지 않도록) */
 export function useCalendarEvents(from: string, to: string) {
@@ -19,7 +20,7 @@ export function useCalendarEvents(from: string, to: string) {
 
 export type LeaveListStatus = DocStatus | "all";
 
-export interface LeaveListParams {
+interface LeaveListParams {
   employeeId?: number | null;
   /** 기본 active */
   status?: LeaveListStatus;
@@ -75,6 +76,16 @@ export function tint(hex: string, alpha: number): string {
   const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
   if (!m) return `rgba(79, 124, 255, ${alpha})`;
   return `rgba(${parseInt(m[1]!, 16)}, ${parseInt(m[2]!, 16)}, ${parseInt(m[3]!, 16)}, ${alpha})`;
+}
+
+/** 휴가원 기간 표시: 이어지는 항목은 한 구간으로 (종류 이름은 겹치지 않게 ", "로 이음) */
+export function requestPeriods(r: Pick<LeaveRequest, "items"> & WorkSchedule) {
+  return mergeLeavePeriods(r.items, r).map((p) => ({
+    ...p,
+    key: p.items[0]!.id,
+    typeName: [...new Set(p.items.map((i) => i.leaveTypeDisplayName))].join(", "),
+    minutes: p.items.reduce((n, i) => n + i.minutes, 0),
+  }));
 }
 
 /** 짧은 기간 표시: 같은 날 "10:00~19:00" (withDate면 "10/1 10:00~19:00"), 여러 날 "10/1 14:00 ~ 10/3 12:00" */

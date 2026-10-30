@@ -335,6 +335,24 @@ describe("launcher 실행", () => {
     expect(readLog(home)).not.toContain("launcher 오류");
   });
 
+  it("--stop-on-stdin-end: 트레이가 입력을 닫으면 서버와 함께 정상 종료", { timeout: 40_000 }, async () => {
+    const { home, port } = await setupHome("healthy");
+    const proc = spawn(process.execPath, [path.join(home, "launcher.mjs"), "--stop-on-stdin-end"], {
+      stdio: ["pipe", "ignore", "ignore"],
+    });
+    const exited = new Promise((resolve) => proc.on("exit", resolve));
+    try {
+      expect(await waitFor(async () => (await health(port))?.version === "0.2.0" || null)).toBe(true);
+      proc.stdin.end();
+      expect(await Promise.race([exited, sleep(15_000).then(() => "시간 초과")])).toBe(0);
+      expect(await health(port)).toBeNull();
+      expect(readLog(home)).toContain("트레이 종료 신호를 받아 서버와 함께 종료합니다.");
+    } finally {
+      proc.kill();
+      await exited;
+    }
+  });
+
   it("config.json 의 host 를 특정 주소로 정해도 그 주소로 상태를 확인해 확정", { timeout: 40_000 }, async () => {
     // 127.0.0.2 에서만 받는 서버 → 127.0.0.1 로 확인하면 60초 뒤 되돌림
     const host = "127.0.0.2";

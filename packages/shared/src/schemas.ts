@@ -21,19 +21,19 @@ export const dateString = z
   .string()
   .refine(isDateString, "날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)")
   .refine(isInYearRange, YEAR_RANGE_MESSAGE);
-export const timeString = z.string().refine(isTimeString, "시각 형식이 올바르지 않습니다. (HH:MM)");
+const timeString = z.string().refine(isTimeString, "시각 형식이 올바르지 않습니다. (HH:MM)");
 export const dateTimeString = z
   .string()
   .refine(isDateTimeString, "일시 형식이 올바르지 않습니다. (YYYY-MM-DDTHH:MM)")
   .refine(isInYearRange, YEAR_RANGE_MESSAGE);
-export const idSchema = z.coerce
+const idSchema = z.coerce
   .number({ error: "항목을 선택하세요." })
   .int("항목을 선택하세요.")
   .positive("항목을 선택하세요.");
-export const colorString = z.string().regex(/^#[0-9a-fA-F]{6}$/, "색상 형식이 올바르지 않습니다. (#RRGGBB)");
+const colorString = z.string().regex(/^#[0-9a-fA-F]{6}$/, "색상 형식이 올바르지 않습니다. (#RRGGBB)");
 
 /** 10분 단위 시간(분) */
-export const stepMinutes = (label: string) =>
+const stepMinutes = (label: string) =>
   z
     .number({ error: `${label}을(를) 숫자로 입력하세요.` })
     .int(`${label}은(는) 10분 단위로 입력하세요.`)
@@ -274,6 +274,14 @@ export const settingsInput = z
     }
   });
 
+/** NAS 백업 폴더 저장. 빈 값 = NAS 백업 끔 */
+export const nasBackupDirInput = z.object({
+  nasBackupDir: trimmed(260, "NAS 백업 폴더").refine(
+    (v) => v === "" || /^(?:[\\/]{2}[^\\/]+[\\/][^\\/]+|[A-Za-z]:[\\/])/.test(v),
+    "NAS 백업 폴더는 \\\\NAS주소\\공유폴더 형식으로 입력하세요.",
+  ),
+});
+
 export const departmentInput = z.object({
   name: trimmed(50, "소속 이름").min(1, "소속 이름을 입력하세요."),
   sortOrder: z
@@ -294,7 +302,7 @@ export const categoryInput = z.object({
     .max(9999, "표시 순서는 0~9999 사이로 입력하세요."),
 });
 
-export const leaveRequestItemInput = z.object({
+const leaveRequestItemInput = z.object({
   leaveTypeId: idSchema,
   startAt: dateTimeString,
   endAt: dateTimeString,
@@ -423,7 +431,7 @@ export const overtimeAwardInput = z
   });
 export type OvertimeAwardInput = z.infer<typeof overtimeAwardInput>;
 
-export const overtimeInput = z.union([overtimeGeneralInput, overtimeSoldierInput, overtimeAwardInput]);
+const overtimeInput = z.union([overtimeGeneralInput, overtimeSoldierInput, overtimeAwardInput]);
 export type OvertimeInput = z.infer<typeof overtimeInput>;
 
 /** 화면 표를 엑셀로 (잔여 현황·사용 현황): 화면에 보이는 그대로 보내면 서버가 .xlsx 로 만듦 */
@@ -460,7 +468,7 @@ export const holidayInput = z.object({
 export type HolidayInput = z.infer<typeof holidayInput>;
 
 /** 사회복무요원 특별휴가 근무내역 기본 문구 */
-export const SOLDIER_WORK_DETAILS_INTRO =
+const SOLDIER_WORK_DETAILS_INTRO =
   "사회복지사업법 제 2조 4호에 따른 사회복지시설에서 근무하는 사회복무요원에게 월 1회 특별휴가 (연10일의) 특별휴가를 부여함.(시행일 25년 2월)";
 
 export function soldierWorkDetails(targets: { name: string; month: number; days: number }[]): string {

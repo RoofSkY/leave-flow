@@ -1,34 +1,34 @@
 {
-  "name": "leave-flow",
-  "version": "0.1.0",
-  "private": true,
-  "description": "희망세움터 휴가원·시간외근무 신청서 관리 (사무실 LAN 전용)",
-  "type": "module",
-  "workspaces": [
-    "packages/*",
-    "apps/*"
-  ],
-  "engines": {
-    "node": ">=24"
-  },
-  "scripts": {
-    "dev": "node scripts/dev.mjs",
-    "dev:server": "npm run dev -w @leave-flow/server",
-    "dev:web": "npm run dev -w @leave-flow/web",
-    "build": "npm run build -w @leave-flow/web && npm run build -w @leave-flow/server",
-    "package": "node scripts/package-release.mjs",
-    "test": "vitest run",
-    "typecheck": "tsc -p packages/shared --noEmit && tsc -p apps/server --noEmit && tsc -p apps/web --noEmit"
-  },
-  "devDependencies": {
-    "@types/node": "^26.6.5",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.2",
-    "esbuild": "^0.28.2",
-    "tsx": "^4.23.15",
-    "typescript": "^7.0.2",
-    "vite": "^8.3.4",
-    "vitest": "^5.0.5"
-  }
+	"name": "leave-flow",
+	"version": "0.2.0",
+	"private": true,
+	"description": "휴가원·시간외근무 신청서 관리 (사무실 LAN 전용)",
+	"type": "module",
+	"workspaces": [
+		"packages/*",
+		"apps/*"
+	],
+	"engines": {
+		"node": ">=24"
+	},
+	"scripts": {
+		"dev": "node scripts/dev.mjs",
+		"dev:server": "npm run dev -w @leave-flow/server",
+		"dev:web": "npm run dev -w @leave-flow/web",
+		"build": "npm run build -w @leave-flow/web && npm run build -w @leave-flow/server",
+		"package": "node scripts/package-release.mjs",
+		"test": "vitest run",
+		"typecheck": "tsc -p packages/shared --noEmit && tsc -p apps/server --noEmit && tsc -p apps/web --noEmit"
+	},
+	"devDependencies": {
+		"@types/node": "^26.6.5",
+		"@types/react": "^19.3.0",
+		"@types/react-dom": "^19.3.0",
+		"@vitejs/plugin-react": "^6.1.2",
+		"esbuild": "^0.28.2",
+		"tsx": "^4.23.15",
+		"typescript": "^7.0.2",
+		"vite": "^8.3.4",
+		"vitest": "^5.0.5"
+	}
 }

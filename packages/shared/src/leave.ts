@@ -21,7 +21,7 @@ export type ApprovalRole = (typeof APPROVAL_ROLES)[number];
 export const DEFAULT_APPROVAL_ROLES: ApprovalRole[] = ["담당", "센터장"];
 
 /** 휴가 항목 하나의 최대 기간(일). 더 긴 휴가는 항목을 나눠 입력 */
-export const MAX_LEAVE_SPAN_DAYS = 366;
+const MAX_LEAVE_SPAN_DAYS = 366;
 
 /** 직원 근무 일정. 신청 시점 값을 휴가원에 그대로 저장해 재계산에 사용한다. */
 export interface WorkSchedule {
@@ -158,7 +158,7 @@ function addWorkingMinutes(from: number, amount: number): number {
 }
 
 /** 반차 경계 시각(분). 근무시간(점심 제외)의 절반 지점 */
-export function halfDayMidpoint(schedule: WorkSchedule): number {
+function halfDayMidpoint(schedule: WorkSchedule): number {
   return addWorkingMinutes(
     parseTime(schedule.workStart),
     Math.round(dailyWorkMinutes(schedule) / 2),
@@ -186,7 +186,7 @@ export function quickRangeTimes(
  * 휴가 입력 시각(분)으로 허용되는지.
  * 10분 단위이거나, 반차 경계 시각(근무시간에 따라 10분 단위가 아닐 수 있음)이면 허용.
  */
-export function isAllowedLeaveMinute(minutes: number, schedule: WorkSchedule): boolean {
+function isAllowedLeaveMinute(minutes: number, schedule: WorkSchedule): boolean {
   return minutes % LEAVE_STEP_MINUTES === 0 || minutes === halfDayMidpoint(schedule);
 }
 
@@ -284,4 +284,41 @@ export function daysHoursToMinutes(days: number, hours: number, dayMinutes: numb
  */
 export function needsReprint(r: Pick<LeaveRequest, "status" | "lastPrintedAt" | "updatedAt">): boolean {
   return r.status === "active" && r.lastPrintedAt !== null && r.updatedAt > r.lastPrintedAt;
+}
+
+/**
+ * 기간 표시용: 휴가원 한 장의 항목 중 이어지는 것을 한 구간으로 합친다 (종류와 무관, 시작 순).
+ * 이어짐 = 앞 항목이 끝난 시각에 바로 시작하거나, 앞 항목이 근무 종료 시각에 끝나고 다음 근무일 근무 시작 시각에 시작
+ * (사이 날짜가 모두 근무하지 않는 요일이거나 isDayOff 인 날). 근무 일정은 휴가원에 저장된 것.
+ */
+export function mergeLeavePeriods<T extends { startAt: string; endAt: string }>(
+  items: readonly T[],
+  schedule: WorkSchedule,
+  isDayOff: (date: string) => boolean = () => false,
+): { startAt: string; endAt: string; items: T[] }[] {
+  const continues = (endAt: string, startAt: string): boolean => {
+    if (endAt === startAt) return true;
+    const e = parseDateTime(endAt);
+    const s = parseDateTime(startAt);
+    if (formatTime(e.minutes) !== schedule.workEnd || formatTime(s.minutes) !== schedule.workStart) return false;
+    let day = dateToDayNumber(e.date) + 1;
+    const last = dateToDayNumber(s.date);
+    if (day > last) return false;
+    for (; day < last; day++) {
+      const d = dayNumberToDate(day);
+      if (schedule.workDays.includes(weekdayOf(d)) && !isDayOff(d)) return false;
+    }
+    return true;
+  };
+  const out: { startAt: string; endAt: string; items: T[] }[] = [];
+  for (const item of [...items].sort((a, b) => a.startAt.localeCompare(b.startAt))) {
+    const prev = out.at(-1);
+    if (prev && continues(prev.endAt, item.startAt)) {
+      prev.endAt = item.endAt;
+      prev.items.push(item);
+    } else {
+      out.push({ startAt: item.startAt, endAt: item.endAt, items: [item] });
+    }
+  }
+  return out;
 }

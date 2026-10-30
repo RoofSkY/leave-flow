@@ -215,7 +215,7 @@ describe("기반", () => {
       [480, '{"2026-10-08":480}'],
       [0, "{}"],
     ]);
-    // 잔여의 사용도 휴가원과 같음 (전에는 소멸일·기간 종류만 지금 공휴일로 다시 세어 0이 됨)
+    // 잔여의 사용도 휴가원과 같음
     const used = (typeId: number) => getEmployeeBalances(db, emp, 2026).find((b) => b.leaveTypeId === typeId)!.usedMinutes;
     expect([used(yearly), used(expiring), used(period)]).toEqual([480, 480, 480]);
   });

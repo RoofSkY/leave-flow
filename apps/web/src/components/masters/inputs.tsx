@@ -78,7 +78,7 @@ export function ApprovalRoleChips({
 }
 
 /** 직원 색상 후보 (서로 잘 구분되는 차분한 색) */
-export const EMPLOYEE_COLORS = [
+const EMPLOYEE_COLORS = [
   "#4f7cff",
   "#2a9fd6",
   "#1f9e89",

@@ -21,7 +21,7 @@ import { registerDepartmentRoutes } from "./routes/departments.ts";
 import { registerSystemRoutes } from "./routes/system.ts";
 import { registerUsageRoutes } from "./routes/usage.ts";
 
-export interface BuildAppOptions {
+interface BuildAppOptions {
   /** 서버를 종료(재시작)해야 할 때 호출 (업데이트·백업 복구) */
   requestExit: (code: number) => void;
 }

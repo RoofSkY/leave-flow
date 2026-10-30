@@ -1,6 +1,6 @@
 // DB 백업(로컬 backups/ + NAS)·보관 기간 정리·백업 복구.
 import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync, unlinkSync } from "node:fs";
-import { copyFile, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
+import { copyFile, mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { addDays, localTimestamp, type BackupFile } from "@leave-flow/shared";
@@ -12,7 +12,7 @@ import { writeAudit } from "./audit.ts";
 import { SYSTEM_KEYS, setValue } from "./settings.ts";
 
 /** 백업 사유 (파일 이름 끝에 붙음) */
-export type BackupReason = "daily" | "manual" | "pre-restore" | "pre-update" | "pre-delete";
+type BackupReason = "daily" | "manual" | "pre-restore" | "pre-update" | "pre-delete";
 
 /** leave-flow-YYYYMMDD-HHMMSS[-사유][-번호].db */
 const NAME_RE = /^leave-flow-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-([a-z]+(?:-[a-z]+)*))?(?:-(\d+))?\.db$/;
@@ -25,7 +25,7 @@ const NAS_LIST_TIMEOUT_MS = 8_000;
 /** 자동 백업 실패 후 다시 시도하기까지 */
 const DAILY_RETRY_MS = 60 * 60_000;
 
-export interface ParsedBackupName {
+interface ParsedBackupName {
   /** "YYYYMMDD" */
   day: string;
   /** "YYYY-MM-DD HH:MM:SS" */
@@ -63,7 +63,7 @@ function uniqueName(dir: string, now: string, reason: BackupReason): string {
 }
 
 /** 실행 중인 DB의 일관된 단일 파일 복사본 (VACUUM INTO). target 은 없어야 함 */
-export function snapshotDatabase(db: Db, target: string): void {
+function snapshotDatabase(db: Db, target: string): void {
   db.exec(`VACUUM INTO '${target.replaceAll("'", "''")}'`);
 }
 
@@ -96,8 +96,20 @@ function backupDirOf(config: Config, location: BackupFile["location"]): string |
   return location === "local" ? config.backupDir : config.nasBackupDir;
 }
 
+/** 이 폴더에 실제로 쓸 수 있는지 시험 (폴더 만들기 + 시험 파일 쓰기·지우기). 반환: 실패 이유 (쓸 수 있으면 null) */
+export async function checkWritableDir(dir: string): Promise<string | null> {
+  const probe = path.join(dir, `.leave-flow-write-test-${process.pid}`);
+  const attempt = (async () => {
+    await mkdir(dir, { recursive: true });
+    await writeFile(probe, "");
+    await rm(probe, { force: true });
+    return null;
+  })().catch(errText);
+  return withTimeout(attempt, NAS_LIST_TIMEOUT_MS, `${NAS_LIST_TIMEOUT_MS / 1000}초 안에 응답이 없습니다.`);
+}
+
 /** 로컬 backups/ 의 백업 파일을 NAS 폴더로 복사. 반환: 실패 이유 (성공했거나 NAS를 쓰지 않으면 null) */
-export async function copyToNas(config: Config, name: string): Promise<string | null> {
+async function copyToNas(config: Config, name: string): Promise<string | null> {
   if (!config.nasBackupDir) return null;
   try {
     await copyInto(path.join(config.backupDir, name), config.nasBackupDir, name);

@@ -17,6 +17,7 @@ import {
   WEEKDAY_LABELS,
   addDays,
   formatTime,
+  mergeLeavePeriods,
   parseTime,
   weekdayOf,
   type CalendarEvent,
@@ -52,6 +53,21 @@ function monthGrid(today: string): { from: string; to: string } {
   const first = `${today.slice(0, 8)}01`;
   const lastOfMonth = addDays(`${addDays(first, 32).slice(0, 8)}01`, -1);
   return { from: startOfWeekSunday(first), to: addDays(startOfWeekSunday(lastOfMonth), 6) };
+}
+
+/** 월 보기: 한 휴가원의 이어지는 항목은 한 줄로 (휴가원 목록·출력과 같은 규칙, 사이의 휴일도 쉬는 날로 봄) */
+function mergeRuns(list: CalendarEvent[], holidays: HolidayMap): CalendarEvent[] {
+  const byRequest = new Map<number, CalendarEvent[]>();
+  for (const e of list) byRequest.set(e.requestId, [...(byRequest.get(e.requestId) ?? []), e]);
+  return [...byRequest.values()].flatMap((items) =>
+    mergeLeavePeriods(items, items[0]!, (d) => holidays.has(d)).map((p) => ({
+      ...p.items[0]!,
+      startAt: p.startAt,
+      endAt: p.endAt,
+      minutes: p.items.reduce((n, i) => n + i.minutes, 0),
+      leaveTypeName: [...new Set(p.items.map((i) => i.leaveTypeName))].join(", "),
+    })),
+  );
 }
 
 function viewTitle(start: Date, endExclusive: Date): string {
@@ -148,13 +164,16 @@ export function LeaveCalendar({
     return map;
   }, [holidaysQ.data]);
 
-  // 월 보기: 여러 날 휴가는 한 줄로 이어서. 주 보기: 날마다 근무시간 안만 (근무하지 않는 날·휴일 제외)
+  // 월 보기: 여러 날 휴가는 한 줄로 이어서 (한 휴가원의 이어진 날짜 항목도 합침). 주 보기: 날마다 근무시간 안만 (근무하지 않는 날·휴일 제외)
   // 날마다 나눌 때는 직원의 지금 근무 일정이 아니라 휴가원에 저장된 근무 일정(사용 시간 계산 기준)을 씀
   const events = useMemo<EventInput[]>(() => {
     const out: EventInput[] = [];
-    for (const e of eventsQ.data ?? []) {
-      if (!showCancelled && e.status !== "active") continue;
-      if (!filterMatches(filter, { id: e.employeeId, department: e.department, category: e.category })) continue;
+    const visible = (eventsQ.data ?? []).filter(
+      (e) =>
+        (showCancelled || e.status === "active") &&
+        filterMatches(filter, { id: e.employeeId, department: e.department, category: e.category }),
+    );
+    for (const e of view === "timeGridWeek" ? visible : mergeRuns(visible, holidayMap)) {
       const base = { title: `${e.employeeName} · ${e.leaveTypeName}`, extendedProps: { ev: e } };
       const first = e.startAt.slice(0, 10);
       const last = e.endAt.slice(0, 10);

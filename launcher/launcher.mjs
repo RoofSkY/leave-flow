@@ -1,4 +1,4 @@
-// leave-flow launcher — Windows 서비스(NSSM) 또는 작업 스케줄러가 실행하는 프로그램.
+// leave-flow launcher — 트레이(tray.ps1)가 --stop-on-stdin-end 로 실행하는 프로그램.
 // versions/<current>/server.mjs 를 띄우고 감시한다. 의존성 없음 (설치 폴더의 node\node.exe 로 실행).
 //
 // 서버 종료 코드
@@ -10,7 +10,7 @@
 //   그 밖  2초 → 60초까지 늘려 가며 재시작 (10분 이상 잘 돌았으면 다시 2초)
 //
 // 로그: logs/server-YYYYMMDD.log (30일 보관)
-// 새 버전이 정상 기동하면 그 버전의 launcher.mjs·state.mjs 로 이 파일들을 바꿔 둔다 (다음 서비스 시작부터 적용).
+// 새 버전이 정상 기동하면 그 버전의 launcher.mjs·state.mjs 로 이 파일들을 바꿔 둔다 (다음에 트레이로 다시 켤 때부터 적용).
 import { spawn } from "node:child_process";
 import {
   appendFileSync,
@@ -206,9 +206,9 @@ function restoreDbBeforeUpdate(backupFile) {
   }
 }
 
-/** 정상 기동한 새 버전의 launcher 파일로 바꿔 둠 (다음 서비스 시작부터 적용) */
+/** 정상 기동한 새 버전의 launcher 파일로 바꿔 둠 (다음에 트레이로 다시 켤 때부터 적용) */
 function adoptLauncherFiles(version) {
-  for (const name of ["state.mjs", "launcher.mjs"]) {
+  for (const name of ["state.mjs", "launcher.mjs", "tray.ps1"]) {
     const src = path.join(versionsDir, version, name);
     const dst = path.join(home, name);
     if (!existsSync(src)) continue;
@@ -217,7 +217,7 @@ function adoptLauncherFiles(version) {
     try {
       writeFileSync(`${dst}.new`, next);
       renameSync(`${dst}.new`, dst);
-      log(`${name} 파일을 새 버전으로 바꿨습니다. 다음 서비스 시작부터 적용됩니다.`);
+      log(`${name} 파일을 새 버전으로 바꿨습니다. 다음에 트레이로 다시 켤 때부터 적용됩니다.`);
     } catch (err) {
       log(`${name} 파일을 바꾸지 못했습니다: ${err.message}`);
     }
@@ -247,6 +247,12 @@ function shutdown(signal) {
 
 for (const sig of process.platform === "win32" ? ["SIGINT", "SIGTERM", "SIGBREAK"] : ["SIGINT", "SIGTERM", "SIGHUP"]) {
   process.on(sig, () => shutdown(sig));
+}
+// 트레이(tray.ps1)가 실행한 경우: 트레이가 입력을 닫으면(종료 메뉴, 트레이가 꺼짐) 서버와 함께 종료
+if (process.argv.includes("--stop-on-stdin-end")) {
+  process.stdin.on("end", () => shutdown("트레이 종료"));
+  process.stdin.on("error", () => shutdown("트레이 종료"));
+  process.stdin.resume();
 }
 // launcher 가 어떤 이유로든 끝나면 서버도 함께 끝냄
 process.on("exit", () => {

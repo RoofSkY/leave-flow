@@ -13,7 +13,7 @@ import { createBackup } from "./backup.ts";
 import { SYSTEM_KEYS, getValue, setValue } from "./settings.ts";
 
 /** launcher 와 같은 형식 (launcher/state.mjs) */
-export interface LauncherState {
+interface LauncherState {
   current: string;
   previous: string | null;
   pending: string | null;
@@ -28,7 +28,7 @@ export interface LauncherState {
   preUpdateBackup?: string | null;
 }
 
-export interface ReleaseInfo {
+interface ReleaseInfo {
   version: string;
   zipUrl: string | null;
   shaUrl: string | null;
@@ -71,7 +71,7 @@ export function compareVersions(a: string, b: string): number {
 }
 
 /** 업데이트를 쓸 수 없는 이유 (쓸 수 있으면 null) */
-export function updatesDisabledReason(ctx: AppContext): string | null {
+function updatesDisabledReason(ctx: AppContext): string | null {
   if (ctx.version === "dev") return "개발 실행 중에는 업데이트 기능을 사용할 수 없습니다.";
   if (!ctx.config.updateRepo) {
     return "config.json에 업데이트 저장소(updateRepo)가 설정되어 있지 않아 업데이트 기능이 꺼져 있습니다.";
@@ -127,7 +127,7 @@ function userAgent(ctx: AppContext): string {
 }
 
 /** 최신 릴리스 (없으면 null) */
-export async function fetchLatestRelease(ctx: AppContext): Promise<ReleaseInfo | null> {
+async function fetchLatestRelease(ctx: AppContext): Promise<ReleaseInfo | null> {
   const res = await fetch(`https://api.github.com/repos/${ctx.config.updateRepo}/releases/latest`, {
     headers: { "User-Agent": userAgent(ctx), Accept: "application/vnd.github+json" },
     signal: AbortSignal.timeout(API_TIMEOUT_MS),

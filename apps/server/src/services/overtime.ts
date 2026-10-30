@@ -44,7 +44,7 @@ interface TargetInput {
 }
 
 /** kind 로 일반/요원/시상 양식을 골라 검사 (각 양식의 한국어 오류 메시지가 그대로 나가도록) */
-export function parseOvertimeInput(body: unknown): OvertimeInput {
+function parseOvertimeInput(body: unknown): OvertimeInput {
   const kind = (body as { kind?: unknown } | null | undefined)?.kind;
   if (kind === "soldier") return parseInput(overtimeSoldierInput, body);
   if (kind === "award") return parseInput(overtimeAwardInput, body);

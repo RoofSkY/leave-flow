@@ -6,11 +6,11 @@ import { Badge, Button, ColorDot, ErrorText, Modal, Spinner, useConfirm, useToas
 import { api, errorMessage } from "../../lib/api.ts";
 import { formatDateKo, formatRangeKo, formatTimestamp } from "../../lib/format.ts";
 import { invalidateLeaveData, qk } from "../../lib/queries.ts";
-import { useLeaveRequest } from "./leaveQueries.ts";
+import { requestPeriods, useLeaveRequest } from "./leaveQueries.ts";
 import "./leave.css";
 
 function periodsText(r: LeaveRequest): string {
-  return r.items.map((i) => `${i.leaveTypeDisplayName} ${formatRangeKo(i.startAt, i.endAt)}`).join("\n");
+  return requestPeriods(r).map((p) => `${p.typeName} ${formatRangeKo(p.startAt, p.endAt)}`).join("\n");
 }
 
 /** 휴가원 상세: 수정 / 취소 / 복구 / 출력 / 영구 삭제(취소된 휴가원) */
@@ -152,14 +152,14 @@ ${periodsText(req)}
           </div>
 
           <ul className={["lf-detail-items", r.status === "cancelled" && "is-cancelled"].filter(Boolean).join(" ")}>
-            {r.items.map((i) => (
-              <li key={i.id}>
+            {requestPeriods(r).map((p) => (
+              <li key={p.key}>
                 <span className="lf-detail-type">
-                  {i.leaveTypeDisplayName}
-                  {i.leaveTypeDeleted && <span className="muted"> (삭제된 종류)</span>}
+                  {p.typeName}
+                  {p.items.some((i) => i.leaveTypeDeleted) && <span className="muted"> (삭제된 종류)</span>}
                 </span>
-                <span className="lf-detail-range">{formatRangeKo(i.startAt, i.endAt)}</span>
-                <span className="lf-detail-min">{formatLeaveMinutes(i.minutes, dayMinutesOf(r))}</span>
+                <span className="lf-detail-range">{formatRangeKo(p.startAt, p.endAt)}</span>
+                <span className="lf-detail-min">{formatLeaveMinutes(p.minutes, dayMinutesOf(r))}</span>
               </li>
             ))}
           </ul>

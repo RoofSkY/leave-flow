@@ -3,6 +3,7 @@ import {
   calculateLeaveUsage,
   dailyWorkMinutes,
   formatLeaveMinutes,
+  mergeLeavePeriods,
   dayMinutesOf,
   daysHoursToMinutes,
   formatHoursMinutes,
@@ -245,5 +246,39 @@ describe("needsReprint (출력 후 수정됨)", () => {
     { desc: "취소됨", r: { ...printed, status: "cancelled" as const, updatedAt: "2026-10-02 09:00:00" }, expected: false },
   ])("$desc", ({ r, expected }) => {
     expect(needsReprint(r)).toBe(expected);
+  });
+});
+
+describe("mergeLeavePeriods", () => {
+  const item = (startAt: string, endAt: string) => ({ startAt, endAt });
+  const spans = (items: { startAt: string; endAt: string }[], isDayOff?: (d: string) => boolean) =>
+    mergeLeavePeriods(items, tenToSeven, isDayOff).map((p) => `${p.startAt}~${p.endAt}(${p.items.length})`);
+
+  it("하루씩 나눈 항목이 이어지면 한 구간 (순서가 섞여 있어도)", () => {
+    expect(
+      spans([
+        item("2026-09-29T10:00", "2026-09-29T19:00"),
+        item("2026-09-28T10:00", "2026-09-28T19:00"),
+        item("2026-09-30T10:00", "2026-09-30T19:00"),
+      ]),
+    ).toEqual(["2026-09-28T10:00~2026-09-30T19:00(3)"]);
+  });
+
+  it("주말·휴일만 사이에 있으면 이어짐, 근무일이 비면 끊김", () => {
+    // 금(10-30) → 월(11-02)
+    expect(spans([item("2026-10-30T10:00", "2026-10-30T19:00"), item("2026-11-02T10:00", "2026-11-02T19:00")])).toEqual([
+      "2026-10-30T10:00~2026-11-02T19:00(2)",
+    ]);
+    const twoDays = [item("2026-10-13T10:00", "2026-10-13T19:00"), item("2026-10-15T10:00", "2026-10-15T19:00")];
+    expect(spans(twoDays)).toHaveLength(2);
+    expect(spans(twoDays, (d) => d === "2026-10-14")).toEqual(["2026-10-13T10:00~2026-10-15T19:00(2)"]);
+  });
+
+  it("근무 종료·시작 시각에 맞닿지 않으면 끊김, 같은 날 맞닿으면 이어짐", () => {
+    expect(spans([item("2026-09-03T10:00", "2026-09-03T19:00"), item("2026-09-04T17:00", "2026-09-04T19:00")])).toHaveLength(2);
+    expect(spans([item("2026-09-03T10:00", "2026-09-03T17:00"), item("2026-09-04T10:00", "2026-09-04T19:00")])).toHaveLength(2);
+    expect(spans([item("2026-09-03T10:00", "2026-09-03T15:00"), item("2026-09-03T15:00", "2026-09-03T19:00")])).toEqual([
+      "2026-09-03T10:00~2026-09-03T19:00(2)",
+    ]);
   });
 });

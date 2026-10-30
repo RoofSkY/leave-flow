@@ -2,7 +2,7 @@ import { calculateLeaveUsage, type LeaveDayUsage, type LeaveUsage, type WorkSche
 import { parseJson, queryAll, type Db } from "../db/index.ts";
 
 /** 기간 안의 휴무일 (활성 법정공휴일 + 센터 휴무일) */
-export function getClosedDates(db: Db, fromDate: string, toDate: string): Set<string> {
+function getClosedDates(db: Db, fromDate: string, toDate: string): Set<string> {
   const rows = queryAll<{ date: string }>(
     db,
     "SELECT DISTINCT date FROM holidays WHERE active = 1 AND date >= ? AND date <= ?",

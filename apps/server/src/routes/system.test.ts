@@ -43,6 +43,48 @@ describe("시스템 정보", () => {
   });
 });
 
+describe("NAS 백업 폴더 설정", () => {
+  it("저장하면 config.json 에 쓰고 바로 적용, 변경 이력. 빈 값이면 끔", async () => {
+    const { app, ctx, db } = await createTestApp();
+    const home = ctx.config.homeDir;
+    writeFileSync(path.join(home, "config.json"), JSON.stringify({ port: 8080 }));
+    const nas = path.join(home, "nas", "leave-flow");
+
+    const res = await app.inject({ method: "PUT", url: "/api/system/nas-backup-dir", payload: { nasBackupDir: ` ${nas} ` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ nasBackupDir: nas });
+    expect(JSON.parse(readFileSync(path.join(home, "config.json"), "utf8"))).toEqual({ port: 8080, nasBackupDir: nas });
+    expect(existsSync(nas)).toBe(true);
+    expect(readdirSync(nas)).toEqual([]);
+
+    const backup = await app.inject({ method: "POST", url: "/api/backups", payload: {} });
+    expect(readdirSync(nas)).toEqual([backup.json().name]);
+
+    const off = await app.inject({ method: "PUT", url: "/api/system/nas-backup-dir", payload: { nasBackupDir: "" } });
+    expect(off.json()).toEqual({ nasBackupDir: null });
+    expect(ctx.config.nasBackupDir).toBeNull();
+    expect(JSON.parse(readFileSync(path.join(home, "config.json"), "utf8")).nasBackupDir).toBeNull();
+
+    const logs = queryAll(db, "SELECT summary FROM audit_logs WHERE entity = 'settings' ORDER BY id");
+    expect(logs).toEqual([{ summary: `설정 변경: NAS 백업 폴더 ${nas}` }, { summary: "설정 변경: NAS 백업 끔" }]);
+  });
+
+  it("형식이 틀리거나 쓸 수 없는 폴더는 저장하지 않음", async () => {
+    const { app, ctx } = await createTestApp();
+    const bad = await app.inject({ method: "PUT", url: "/api/system/nas-backup-dir", payload: { nasBackupDir: "nas/backup" } });
+    expect(bad.statusCode).toBe(400);
+
+    // 파일 아래에는 폴더를 만들 수 없음
+    const file = path.join(ctx.config.homeDir, "file.txt");
+    writeFileSync(file, "");
+    const res = await app.inject({ method: "PUT", url: "/api/system/nas-backup-dir", payload: { nasBackupDir: path.join(file, "sub") } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain("NAS 백업 폴더에 쓸 수 없습니다");
+    expect(ctx.config.nasBackupDir).toBeNull();
+    expect(existsSync(path.join(ctx.config.homeDir, "config.json"))).toBe(false);
+  });
+});
+
 describe("백업 API", () => {
   it("지금 백업 → 201, 목록에 로컬·NAS, 변경 이력", async () => {
     const nas = path.join(testConfig().homeDir, "nas");

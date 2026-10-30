@@ -36,7 +36,7 @@ export function scheduleOf(s: { workDays: readonly number[]; workStart: string; 
   return { workDays: [...s.workDays], workStart: s.workStart, workEnd: s.workEnd };
 }
 
-export interface EvaluatedItem {
+interface EvaluatedItem {
   input: LeaveRequestItemInput;
   type: LeaveType | null;
   usage: LeaveUsage | null;
@@ -84,7 +84,7 @@ export function assertItemsValid(evaluated: readonly EvaluatedItem[]): void {
 }
 
 /** 경고 계산에 쓰는 항목 */
-export interface WarningItem {
+interface WarningItem {
   /** 화면에 보여줄 항목 번호 (1부터) */
   no: number;
   leaveTypeId: number;

@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { LeaveDetailModal } from "../components/leave/LeaveDetailModal.tsx";
 import { LeaveEditor, type EditorTarget } from "../components/leave/LeaveEditor.tsx";
-import { useLeaveRequests, type LeaveListStatus } from "../components/leave/leaveQueries.ts";
+import { requestPeriods, useLeaveRequests, type LeaveListStatus } from "../components/leave/leaveQueries.ts";
 import {
   EmployeeFilter,
   filterFromParams,
@@ -209,10 +209,10 @@ export function LeaveListPage() {
                   </td>
                   <td>
                     <ul className="lf-list-periods">
-                      {r.items.map((i) => (
-                        <li key={i.id}>
-                          <span className="lf-list-type">{i.leaveTypeDisplayName}</span>
-                          {formatPeriod(i.startAt, i.endAt)}
+                      {requestPeriods(r).map((p) => (
+                        <li key={p.key}>
+                          <span className="lf-list-type">{p.typeName}</span>
+                          {formatPeriod(p.startAt, p.endAt)}
                         </li>
                       ))}
                     </ul>

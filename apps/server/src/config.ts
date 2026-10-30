@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { isTimeString } from "@leave-flow/shared";
 
@@ -40,7 +40,7 @@ export interface Config {
 }
 
 /** config.json 에 쓸 수 있는 값 (모두 선택) */
-export interface ConfigFile {
+interface ConfigFile {
   host?: string;
   port?: number;
   dataDir?: string;
@@ -56,7 +56,7 @@ export interface ConfigFile {
   logger?: boolean;
 }
 
-export function readConfigFile(homeDir: string): ConfigFile {
+function readConfigFile(homeDir: string): ConfigFile {
   const file = path.join(homeDir, "config.json");
   if (!existsSync(file)) return {};
   try {
@@ -64,6 +64,15 @@ export function readConfigFile(homeDir: string): ConfigFile {
   } catch (err) {
     throw new Error(`config.json 을 읽을 수 없습니다: ${(err as Error).message}`);
   }
+}
+
+/** config.json 의 값 하나만 바꿔 저장 (나머지 값은 그대로). 임시 파일에 쓴 뒤 바꿔서 반쯤 쓴 파일이 남지 않게 함 */
+export function saveConfigValue<K extends keyof ConfigFile>(homeDir: string, key: K, value: ConfigFile[K]): void {
+  const file = readConfigFile(homeDir);
+  file[key] = value;
+  const target = path.join(homeDir, "config.json");
+  writeFileSync(`${target}.tmp`, `${JSON.stringify(file, null, 2)}\n`, "utf8");
+  renameSync(`${target}.tmp`, target);
 }
 
 /** 업데이트 확인 주기(시간): 1~576으로 보정, 숫자가 아니면 6 (setInterval 한계 약 596시간) */

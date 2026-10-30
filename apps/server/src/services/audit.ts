@@ -1,7 +1,7 @@
 import type { AuditAction, AuditEntity } from "@leave-flow/shared";
 import { execute, type Db } from "../db/index.ts";
 
-export interface AuditInput {
+interface AuditInput {
   entity: AuditEntity;
   entityId?: number | null;
   /** 관련 직원 (변경 이력을 직원으로 필터할 때 사용) */

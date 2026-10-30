@@ -11,7 +11,7 @@ export function formatDateKo(date: string, withYear = false): string {
 }
 
 /** "2026-10-01T10:00" → "10월 1일 (목) 10:00" */
-export function formatDateTimeKo(dateTime: string, withYear = false): string {
+function formatDateTimeKo(dateTime: string, withYear = false): string {
   return `${formatDateKo(dateTime.slice(0, 10), withYear)} ${dateTime.slice(11, 16)}`;
 }
 

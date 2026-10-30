@@ -1,12 +1,16 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { tableExportInput, type SystemInfo } from "@leave-flow/shared";
+import { nasBackupDirInput, tableExportInput, type SystemInfo } from "@leave-flow/shared";
+import { saveConfigValue } from "../config.ts";
 import type { AppContext } from "../context.ts";
+import { transaction } from "../db/index.ts";
+import { badRequest } from "../lib/errors.ts";
 import { clientIp, parseInput } from "../lib/http.ts";
-import { createBackup, listBackups, prepareRestore } from "../services/backup.ts";
+import { writeAudit } from "../services/audit.ts";
+import { checkWritableDir, createBackup, listBackups, prepareRestore } from "../services/backup.ts";
 import { buildExportWorkbook, buildTableWorkbook } from "../services/excelExport.ts";
-import { SYSTEM_KEYS, getValue } from "../services/settings.ts";
+import { SYSTEM_KEYS, getValue, setValue } from "../services/settings.ts";
 import {
   applyUpdate,
   checkForUpdate,
@@ -62,6 +66,38 @@ export function registerSystemRoutes(
   app.post("/system/update/apply", async (req) => {
     const message = await applyUpdate(ctx, requestExit, { ip: clientIp(req) });
     return { message };
+  });
+
+  // 설정 화면에서 NAS 백업 폴더 지정: 써 볼 수 있는지 확인한 뒤 config.json 에 저장, 재시작 없이 바로 적용
+  app.put("/system/nas-backup-dir", async (req) => {
+    const input = parseInput(nasBackupDirInput, req.body);
+    const dir = input.nasBackupDir || null;
+    if (dir) {
+      const error = await checkWritableDir(dir);
+      if (error) {
+        throw badRequest(`NAS 백업 폴더에 쓸 수 없습니다: ${error} (주소, 공유폴더 쓰기 권한, 서버 실행 계정을 확인하세요)`);
+      }
+    }
+    const before = ctx.config.nasBackupDir;
+    saveConfigValue(ctx.config.homeDir, "nasBackupDir", dir);
+    ctx.config.nasBackupDir = dir;
+    transaction(ctx.db, () => {
+      // 이전 폴더의 복사 실패 기록은 더 이상 맞지 않음
+      setValue(ctx.db, SYSTEM_KEYS.lastBackupError, null);
+      writeAudit(
+        ctx.db,
+        clientIp(req),
+        {
+          entity: "settings",
+          action: "update",
+          summary: dir ? `설정 변경: NAS 백업 폴더 ${dir}` : "설정 변경: NAS 백업 끔",
+          before: { nasBackupDir: before },
+          after: { nasBackupDir: dir },
+        },
+        ctx.now(),
+      );
+    });
+    return { nasBackupDir: dir };
   });
 
   app.get("/backups", async () => listBackups(ctx.config));

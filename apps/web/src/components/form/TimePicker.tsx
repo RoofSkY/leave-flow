@@ -9,7 +9,7 @@ const hourOf = (t: string) => t.slice(0, 2);
 const minuteOf = (t: string) => t.slice(3, 5);
 
 /** 직접 입력한 글자 → "HH:MM" (못 알아보면 null). "930", "0930", "9:30", "14", "14시 30분" 모두 허용 */
-export function parseTypedTime(text: string): string | null {
+function parseTypedTime(text: string): string | null {
   const s = text.trim();
   if (!s) return null;
   let h: number;

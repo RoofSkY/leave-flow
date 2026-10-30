@@ -22,7 +22,7 @@ function categoryFromRow(r: Row): Category {
 }
 
 /** 표시 순서, 이름순 */
-export function listCategories(db: Db): Category[] {
+function listCategories(db: Db): Category[] {
   return queryAll(db, `${SELECT} ORDER BY c.sort_order, c.name`).map(categoryFromRow);
 }
 

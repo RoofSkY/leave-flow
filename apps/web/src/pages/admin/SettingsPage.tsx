@@ -1,5 +1,6 @@
 import { CategoriesCard } from "../../components/masters/CategoriesCard.tsx";
 import { DepartmentsCard } from "../../components/masters/DepartmentsCard.tsx";
+import { NasBackupCard } from "../../components/masters/NasBackupCard.tsx";
 import { WorkHoursDefaultsCard } from "../../components/masters/WorkHoursDefaultsCard.tsx";
 import { ErrorText, PageHeader, Spinner } from "../../components/ui/index.tsx";
 import { useSettings } from "../../lib/queries.ts";
@@ -10,7 +11,7 @@ export function SettingsPage() {
 
   return (
     <div>
-      <PageHeader title="설정" description="근무시간 기본값, 소속·구분 목록을 정합니다." />
+      <PageHeader title="설정" description="근무시간 기본값, 소속·구분 목록, NAS 백업 폴더를 정합니다." />
 
       {settings.isPending ? (
         <Spinner />
@@ -21,6 +22,7 @@ export function SettingsPage() {
           <WorkHoursDefaultsCard settings={settings.data} />
           <DepartmentsCard />
           <CategoriesCard />
+          <NasBackupCard />
         </div>
       )}
     </div>

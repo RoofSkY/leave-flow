@@ -8,17 +8,19 @@
   3. 배포 파일을 versions\<버전>\ 에 복사, launcher.mjs·state.mjs 복사, state.json 기록
   4. config.json 이 없으면 만들기 (있으면 그대로 둠, 데이터도 건드리지 않음)
   5. Windows 방화벽: 이 포트를 '개인(사설)' 네트워크에서만 허용
-  6. 자동 실행 등록: tools\nssm.exe 가 있으면 Windows 서비스, 없으면 작업 스케줄러(부팅 시 실행)
+  6. 자동 실행 등록: 지금 로그인한 계정이 Windows 에 로그인하면 트레이(tray.ps1)로 실행 (작업 스케줄러, -NoAutoStart 면 등록만)
+     + 시작 메뉴 바로가기 'leave-flow 휴가원 관리' (-DesktopShortcut 이면 바탕화면에도)
   7. 시작 후 /api/health 확인, 접속 주소 안내
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -NasBackupDir "\\NAS주소\backup\leave-flow" -ServiceAccount "office"
+  powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -NasBackupDir "\\NAS주소\backup\leave-flow"
 #>
 [CmdletBinding()]
 param(
-  [string]$InstallDir = "C:\leave-flow",
+  # 없으면 설치되어 있는 폴더(예약 작업 기준), 처음이면 문서\leave-flow
+  [string]$InstallDir,
   [int]$Port = 8080,
   # leave-flow-<버전>.zip 경로. 없으면 이 스크립트가 있는 압축 해제 폴더 또는 옆의 zip 사용
   [string]$ReleaseZip,
@@ -27,15 +29,19 @@ param(
   [string]$NasBackupDir,
   # 자동 업데이트용 GitHub 저장소 "owner/repo" (없으면 배포 파일의 release.json 값)
   [string]$UpdateRepo,
-  # NAS 공유폴더에 접근할 수 있는 Windows 계정 (없으면 SYSTEM 으로 실행)
-  [string]$ServiceAccount
+  # Windows 로그인 시 자동 실행하지 않음 (시작 메뉴·바탕화면 바로가기로만 켬)
+  [switch]$NoAutoStart,
+  # 바탕화면 바로가기 만들기 (주지 않으면 있던 바로가기를 지움)
+  [switch]$DesktopShortcut
 )
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
+# 설치 프로그램(exe)이 출력을 받아 진행 상황을 보여 줌 → 한글이 깨지지 않게 UTF-8 로
+if ([Console]::IsOutputRedirected) { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false }
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-$ServiceName = "leave-flow"
+$TaskName = "leave-flow"
 $FirewallRule = "leave-flow"
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
 
@@ -71,6 +77,22 @@ function Home-Path($value, $default) {
   if ($value) { $p = [string]$value }
   return [IO.Path]::GetFullPath([IO.Path]::Combine($InstallDir, $p))
 }
+# 트레이(tray.ps1)를 끄면 launcher 가 서버와 함께 정상 종료함. 15초 안에 끝나지 않으면 이 설치 폴더의 node 만 강제 종료
+function Stop-LeaveFlow {
+  $trayScript = Join-Path $InstallDir "tray.ps1"
+  Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($trayScript, [StringComparison]::OrdinalIgnoreCase) -ge 0 } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  $nodeDir = Join-Path $InstallDir "node"
+  $deadline = (Get-Date).AddSeconds(15)
+  for (;;) {
+    $left = @(Get-Process -Name node -ErrorAction SilentlyContinue |
+      Where-Object { $_.Path -and $_.Path.StartsWith($nodeDir, [StringComparison]::OrdinalIgnoreCase) })
+    if ($left.Count -eq 0) { return }
+    if ((Get-Date) -gt $deadline) { $left | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; return }
+    Start-Sleep -Milliseconds 500
+  }
+}
 
 # ---------- 확인 ----------
 
@@ -80,6 +102,11 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 if ($Port -eq 5000) { Fail "5000번 포트는 같은 PC의 auto-ansimtalk 가 사용하므로 쓸 수 없습니다." }
 if ($Port -lt 1 -or $Port -gt 65535) { Fail "포트 번호가 올바르지 않습니다: $Port" }
+if (-not $InstallDir) {
+  $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+  if ($task -and $task.Actions[0].WorkingDirectory) { $InstallDir = $task.Actions[0].WorkingDirectory }
+  else { $InstallDir = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "leave-flow" }
+}
 $InstallDir = [IO.Path]::GetFullPath($InstallDir)
 
 # ---------- 배포 파일 찾기 ----------
@@ -120,21 +147,12 @@ Ok "버전 $Version"
 
 Step "기존 실행 중지 (다시 설치하는 경우)"
 $nodeDir = Join-Path $InstallDir "node"
-$service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-if ($service -and $service.Status -ne "Stopped") {
-  Stop-Service -Name $ServiceName -Force
-  $service.WaitForStatus("Stopped", (New-TimeSpan -Seconds 30))
-  Ok "서비스 중지"
-}
-if (Get-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue) {
-  Stop-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue
+if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
+  Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
   Ok "예약 작업 중지"
 }
-# 이 설치 폴더의 전용 node.exe 로 실행 중인 프로세스만 정리 (다른 프로그램은 건드리지 않음)
-Get-Process -Name node -ErrorAction SilentlyContinue |
-  Where-Object { $_.Path -and $_.Path.StartsWith($nodeDir, [StringComparison]::OrdinalIgnoreCase) } |
-  Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 1
+# 트레이와 이 설치 폴더의 전용 node.exe 만 정리 (다른 프로그램은 건드리지 않음)
+Stop-LeaveFlow
 
 # ---------- 폴더 ----------
 
@@ -191,10 +209,6 @@ if ($config.nasBackupDir) { $nasDir = [string]$config.nasBackupDir }
 if ($nasDir) {
   if (Test-Path $nasDir) { Ok "NAS 백업 폴더 접근 확인: $nasDir" }
   else { Warn "지금 계정으로 NAS 백업 폴더에 접근할 수 없습니다: $nasDir (주소·공유 권한을 확인하세요)" }
-  if (-not $ServiceAccount) {
-    Warn "NAS 백업을 쓰려면 -ServiceAccount 로 NAS 공유폴더에 접근할 수 있는 Windows 계정을 지정하세요."
-    Warn "SYSTEM 계정은 NAS 에 로그인할 수 없어 NAS 복사가 실패할 수 있습니다. (로컬 백업은 정상)"
-  }
 }
 
 # ---------- Node ----------
@@ -253,6 +267,7 @@ if (-not $sameFolder) {
 }
 Copy-Item -Path (Join-Path $source "launcher.mjs") -Destination (Join-Path $InstallDir "launcher.mjs") -Force
 Copy-Item -Path (Join-Path $source "state.mjs") -Destination (Join-Path $InstallDir "state.mjs") -Force
+Copy-Item -Path (Join-Path $source "tray.ps1") -Destination (Join-Path $InstallDir "tray.ps1") -Force
 Ok "완료"
 
 $statePath = Join-Path $InstallDir "state.json"
@@ -346,62 +361,50 @@ foreach ($p in @(Get-NetConnectionProfile -ErrorAction SilentlyContinue)) {
 
 # ---------- 자동 실행 ----------
 
-Step "부팅 시 자동 실행 등록"
-$password = $null
-$account = $null
-if ($ServiceAccount) {
-  $account = $ServiceAccount
-  if ($account -notmatch '\\' -and $account -notmatch '@') { $account = ".\$account" }
-  $cred = Get-Credential -UserName $account -Message "leave-flow 를 실행할 계정($account)의 Windows 비밀번호를 입력하세요. (NAS 접근용)"
-  if (-not $cred) { Fail "비밀번호를 입력하지 않았습니다." }
-  $password = $cred.GetNetworkCredential().Password
+Step "트레이 실행 등록"
+# 트레이는 로그인한 사람의 화면에 떠야 하므로 지금 이 PC에 로그인한 계정으로 등록
+# (다른 관리자 계정으로 install.cmd 를 실행해도 화면 앞의 계정). NAS 에도 이 계정으로 접근함
+$trayUser = (Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue).UserName
+if (-not $trayUser) { $trayUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name }
+# 그 계정(관리자 권한 없이 실행)으로 데이터·백업·로그·업데이트 파일을 쓸 수 있게
+& icacls $InstallDir /grant "${trayUser}:(OI)(CI)M" /Q | Out-Null
+if ($LASTEXITCODE -ne 0) { Fail "설치 폴더에 '$trayUser' 계정의 쓰기 권한을 주지 못했습니다." }
+
+$psExe = Join-Path $PSHOME "powershell.exe"
+$trayArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $InstallDir 'tray.ps1')`""
+$action = New-ScheduledTaskAction -Execute $psExe -Argument $trayArgs -WorkingDirectory $InstallDir
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+  -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
+$taskPrincipal = New-ScheduledTaskPrincipal -UserId $trayUser -LogonType Interactive -RunLevel Limited
+# 자동 실행을 끄면 트리거 없이 등록 (설치 직후 시작과 update-config.ps1 의 다시 시작에 씀)
+$taskArgs = @{ Action = $action; Settings = $settings; Principal = $taskPrincipal }
+if (-not $NoAutoStart) { $taskArgs.Trigger = New-ScheduledTaskTrigger -AtLogOn -User $trayUser }
+Register-ScheduledTask -TaskName $TaskName -Description "희망세움터 휴가원 관리 프로그램 (트레이로 실행). 설치 폴더: $InstallDir" `
+  @taskArgs -Force | Out-Null
+if ($NoAutoStart) { Ok "작업 스케줄러 '$TaskName' 등록 (Windows 로그인 시 자동 실행 안 함)" }
+else { Ok "작업 스케줄러 '$TaskName' 등록 ($trayUser 로그인 시 실행)" }
+
+# 트레이에서 종료한 뒤 다시 켤 때 쓰는 바로가기 (이미 켜져 있으면 웹페이지를 엶)
+function New-TrayShortcut($path) {
+  $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($path)
+  $shortcut.TargetPath = $psExe
+  $shortcut.Arguments = $trayArgs
+  $shortcut.WorkingDirectory = $InstallDir
+  $shortcut.WindowStyle = 7
+  $shortcut.Description = "휴가원 관리 서버 켜기 (켜져 있으면 웹페이지 열기)"
+  $shortcut.Save()
+}
+New-TrayShortcut (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\leave-flow 휴가원 관리.lnk")
+Ok "시작 메뉴 바로가기: leave-flow 휴가원 관리"
+$desktopShortcutPath = Join-Path ([Environment]::GetFolderPath("CommonDesktopDirectory")) "leave-flow 휴가원 관리.lnk"
+if ($DesktopShortcut) {
+  New-TrayShortcut $desktopShortcutPath
+  Ok "바탕화면 바로가기: leave-flow 휴가원 관리"
+} elseif (Test-Path $desktopShortcutPath) {
+  Remove-Item -Path $desktopShortcutPath -Force
 }
 
-$nssm = Join-Path $InstallDir "tools\nssm.exe"
-if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
-  if (Test-Path $nssm) { & $nssm remove $ServiceName confirm | Out-Null } else { sc.exe delete $ServiceName | Out-Null }
-  Start-Sleep -Seconds 1
-}
-if (Get-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue) {
-  Unregister-ScheduledTask -TaskName $ServiceName -Confirm:$false
-}
-
-$serviceLog = Join-Path $InstallDir "logs\service.log"
-if (Test-Path $nssm) {
-  & $nssm install $ServiceName $nodeExe "launcher.mjs" | Out-Null
-  & $nssm set $ServiceName AppDirectory $InstallDir | Out-Null
-  & $nssm set $ServiceName DisplayName "leave-flow (휴가원 관리)" | Out-Null
-  & $nssm set $ServiceName Description "희망세움터 휴가원 관리 프로그램. 설치 폴더: $InstallDir" | Out-Null
-  & $nssm set $ServiceName Start SERVICE_AUTO_START | Out-Null
-  & $nssm set $ServiceName AppStdout $serviceLog | Out-Null
-  & $nssm set $ServiceName AppStderr $serviceLog | Out-Null
-  & $nssm set $ServiceName AppRotateFiles 1 | Out-Null
-  & $nssm set $ServiceName AppRotateOnline 1 | Out-Null
-  & $nssm set $ServiceName AppRotateBytes 1048576 | Out-Null
-  & $nssm set $ServiceName AppExit Default Restart | Out-Null
-  & $nssm set $ServiceName AppRestartDelay 5000 | Out-Null
-  & $nssm set $ServiceName AppStopMethodConsole 10000 | Out-Null
-  if ($account) { & $nssm set $ServiceName ObjectName $account $password | Out-Null }
-  Start-Service -Name $ServiceName
-  Ok "Windows 서비스 '$ServiceName' 등록 (NSSM)"
-} else {
-  $action = New-ScheduledTaskAction -Execute $nodeExe -Argument "launcher.mjs" -WorkingDirectory $InstallDir
-  $trigger = New-ScheduledTaskTrigger -AtStartup
-  $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
-    -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew
-  $description = "희망세움터 휴가원 관리 프로그램 (부팅 시 실행). 설치 폴더: $InstallDir"
-  if ($account) {
-    Register-ScheduledTask -TaskName $ServiceName -Description $description -Action $action -Trigger $trigger `
-      -Settings $settings -User $account -Password $password -RunLevel Highest -Force | Out-Null
-  } else {
-    $taskPrincipal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-    Register-ScheduledTask -TaskName $ServiceName -Description $description -Action $action -Trigger $trigger `
-      -Settings $settings -Principal $taskPrincipal -Force | Out-Null
-  }
-  Start-ScheduledTask -TaskName $ServiceName
-  Ok "작업 스케줄러 '$ServiceName' 등록 (부팅 시 실행)"
-  Ok "Windows 서비스로 등록하려면 nssm.exe 를 $InstallDir\tools 에 넣고 다시 실행하세요."
-}
+Start-ScheduledTask -TaskName $TaskName
 
 # ---------- 확인 ----------
 
@@ -449,5 +452,8 @@ $ips = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
 foreach ($ip in $ips) { Write-Host "    http://${ip}:$Port" -ForegroundColor White }
 Write-Host "    (이 PC에서는 http://localhost:$Port)"
 Write-Host ""
+Write-Host "작업 표시줄 오른쪽 알림 영역(트레이)의 파란 달력 아이콘에서 웹페이지 열기·종료를 할 수 있습니다."
+if ($NoAutoStart) { Write-Host "Windows 에 로그인해도 자동으로 켜지지 않습니다. 'leave-flow 휴가원 관리' 바로가기(시작 메뉴)로 켭니다." }
+else { Write-Host "Windows 에 로그인하면 자동으로 켜지고, 종료한 뒤에는 'leave-flow 휴가원 관리' 바로가기(시작 메뉴)로 다시 켭니다." }
 Write-Host "처음 설정 순서: 관리 > 휴가 종류 → 설정 → 직원 → 기존 잔여량 → 부여 내역"
 Write-Host "자세한 내용: $versionDir\docs\운영가이드.md"

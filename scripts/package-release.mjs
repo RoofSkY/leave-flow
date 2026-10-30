@@ -1,6 +1,7 @@
 // 배포 파일 만들기: npm run build → release/leave-flow-<버전>/ 조립 → release/leave-flow-<버전>.zip + .sha256
+//   (+ Inno Setup 6 이 있으면 설치 프로그램 release/leave-flow-setup-<버전>.exe)
 // 사용: npm run package   (이미 빌드했으면 node scripts/package-release.mjs --no-build)
-// zip 안 (최상위): server.mjs(.map), web/, launcher.mjs, state.mjs, scripts/(.ps1·.cmd), README.md, docs/운영가이드.md, config.example.json, release.json
+// zip 안 (최상위): server.mjs(.map), web/, launcher.mjs, state.mjs, tray.ps1, scripts/(.ps1·.cmd), README.md, docs/운영가이드.md, config.example.json, release.json
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -52,6 +53,7 @@ if (existsSync(path.join(serverDist, "server.mjs.map"))) copy("apps/server/dist/
 copy("apps/web/dist", "web");
 copy("launcher/launcher.mjs", "launcher.mjs");
 copy("launcher/state.mjs", "state.mjs");
+copy("launcher/tray.ps1", "tray.ps1");
 copy("scripts/windows", "scripts");
 copy("README.md");
 copy("docs/운영가이드.md", "docs/운영가이드.md");
@@ -93,9 +95,38 @@ writeFileSync(zipPath, zip);
 const sha = createHash("sha256").update(zip).digest("hex");
 writeFileSync(`${zipPath}.sha256`, `${sha}  ${name}.zip\n`);
 
+/** Inno Setup 컴파일러: ISCC 환경 변수, 기본 설치 위치 순 (Windows 만) */
+function findIscc() {
+  if (process.env.ISCC) return process.env.ISCC;
+  if (process.platform !== "win32") return null;
+  const candidates = [
+    path.join(process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)", "Inno Setup 6", "ISCC.exe"),
+    path.join(process.env.ProgramFiles ?? "C:\\Program Files", "Inno Setup 6", "ISCC.exe"),
+    path.join(process.env.LOCALAPPDATA ?? "", "Programs", "Inno Setup 6", "ISCC.exe"),
+  ];
+  return candidates.find((p) => existsSync(p)) ?? null;
+}
+
+// 설치 프로그램 (exe): 처음 설치용. 자동 업데이트는 zip 을 씀
+const setupName = `leave-flow-setup-${version}.exe`;
+const setupPath = path.join(releaseDir, setupName);
+rmSync(setupPath, { force: true });
+const iscc = findIscc();
+if (iscc) {
+  console.log(`[package] ${setupName}`);
+  const r = spawnSync(
+    iscc,
+    ["/Q", `/DAppVersion=${version}`, `/DSourceDir=${outDir}`, `/O${releaseDir}`, path.join(root, "scripts/installer/leave-flow.iss")],
+    { stdio: "inherit" },
+  );
+  if (r.status !== 0) fail("설치 프로그램(exe)을 만들지 못했습니다.");
+}
+
 const mb = (n) => `${(n / 1024 / 1024).toFixed(2)} MB`;
 console.log(`\n[package] ${name}`);
 console.log(`  파일 ${Object.keys(files).length}개, zip ${mb(statSync(zipPath).size)}`);
 console.log(`  ${path.relative(root, zipPath)}`);
 console.log(`  ${path.relative(root, zipPath)}.sha256  ${sha}`);
+if (iscc) console.log(`  ${path.relative(root, setupPath)}  ${mb(statSync(setupPath).size)}`);
+else console.log("  설치 프로그램(exe): 건너뜀 — Inno Setup 6 이 없습니다 (winget install JRSoftware.InnoSetup)");
 console.log(`  업데이트 저장소: ${repo ?? "(없음 — config.json 의 updateRepo 를 직접 설정)"}`);

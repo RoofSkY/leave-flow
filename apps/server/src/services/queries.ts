@@ -28,7 +28,7 @@ import {
   type Row,
 } from "../db/index.ts";
 
-export function employeeFromRow(r: Row): Employee {
+function employeeFromRow(r: Row): Employee {
   return {
     id: toNum(r.id),
     name: String(r.name),
@@ -82,7 +82,7 @@ const LEAVE_TYPE_IN_USE = `(
  * @param employeeIds 따로 고른 대상 직원 (leave_type_employees). undefined = 행 없음.
  *   영구 삭제된 직원의 행만 있으면 [] (대상을 정한 종류)
  */
-export function leaveTypeFromRow(r: Row, employeeIds?: number[]): LeaveType {
+function leaveTypeFromRow(r: Row, employeeIds?: number[]): LeaveType {
   const departments = parseJson<string[]>(r.target_departments, []);
   const categories = parseJson<string[]>(r.target_categories, []);
   const restricted = employeeIds !== undefined || departments.length > 0 || categories.length > 0;

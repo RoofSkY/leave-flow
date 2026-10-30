@@ -70,7 +70,7 @@ export interface LeaveType {
   updatedAt: string;
 }
 
-export type GrantSource = "manual" | "overtime";
+type GrantSource = "manual" | "overtime";
 
 export interface Grant {
   id: number;
@@ -198,7 +198,7 @@ export interface LeaveRequest {
   totalMinutes: number;
 }
 
-export type WarningCode =
+type WarningCode =
   | "over_balance"
   | "overlap_existing"
   | "overlap_items"
@@ -209,7 +209,7 @@ export interface Warning {
   message: string;
 }
 
-export interface LeavePreviewItem {
+interface LeavePreviewItem {
   /** 오류가 있으면 minutes = 0, error에 메시지 */
   minutes: number;
   minutesByYear: Record<string, number>;
@@ -355,7 +355,7 @@ export interface OvertimePrintData {
 }
 
 export type HolidayKind = "public" | "center";
-export type HolidaySource = "auto" | "manual";
+type HolidaySource = "auto" | "manual";
 
 export interface Holiday {
   id: number;

@@ -250,7 +250,7 @@ export function Modal({
 
 /* ---------- 확인 창 ---------- */
 
-export interface ConfirmOptions {
+interface ConfirmOptions {
   title: string;
   message: ReactNode;
   confirmLabel?: string;

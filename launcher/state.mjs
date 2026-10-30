@@ -18,19 +18,19 @@ import path from "node:path";
 /** 업데이트 적용 (서버가 pending 을 기록하고 종료) */
 export const EXIT_UPDATE = 75;
 /** 그냥 재시작 (백업 복구) */
-export const EXIT_RESTART = 76;
+const EXIT_RESTART = 76;
 /** 새 버전이 이 시간 안에 /api/health 에 새 버전으로 답해야 함 */
 export const HEALTH_TIMEOUT_MS = 60_000;
-export const BACKOFF_MIN_MS = 2_000;
+const BACKOFF_MIN_MS = 2_000;
 export const BACKOFF_MAX_MS = 60_000;
 /** 이만큼 잘 돌다가 죽었으면 재시작 대기 시간을 처음부터 */
 export const STABLE_MS = 10 * 60_000;
-export const LOG_KEEP_DAYS = 30;
+const LOG_KEEP_DAYS = 30;
 export const DEFAULT_PORT = 8080;
 
 const VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/;
 
-export function isVersion(name) {
+function isVersion(name) {
   return typeof name === "string" && VERSION_RE.test(name);
 }
 
@@ -168,7 +168,7 @@ export function localTimestamp(d = new Date()) {
 }
 
 /** "YYYY-MM-DD" ± days */
-export function shiftDate(date, days) {
+function shiftDate(date, days) {
   const [y, m, d] = date.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
