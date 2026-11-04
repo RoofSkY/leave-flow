@@ -71,6 +71,22 @@ describe("부여 내역 API", () => {
     expect(getEmployeeBalances(db, emp, 2026).find((b) => b.leaveTypeId === annual)?.grantedMinutes).toBe(7200);
   });
 
+  it("분은 10분 단위: 일·시간·분을 더해 저장, 분만 줘도 됨, 10분 단위가 아니면 400", async () => {
+    const { app, emp, comp } = await setup();
+    const post = (amount: object) =>
+      app.inject({
+        method: "POST",
+        url: "/api/grants",
+        payload: { employeeId: emp, leaveTypeId: comp, grantDate: "2026-03-01", note: "", ...amount },
+      });
+    expect((await post({ days: 1, hours: 2, minutes: 30 })).json().minutes).toBe(480 + 150);
+    expect((await post({ days: 0, hours: 0, minutes: 40 })).json().minutes).toBe(40);
+    const bad = await post({ days: 0, hours: 1, minutes: 15 });
+    expect(bad.statusCode).toBe(400);
+    expect(JSON.stringify(bad.json())).toContain("10분 단위");
+    expect((await post({ days: 0, hours: 0, minutes: 0 })).statusCode).toBe(400);
+  });
+
   it("목록 필터(직원·종류·연도)와 부여일 내림차순", async () => {
     const { app, db, emp, annual, comp } = await setup();
     const other = insertEmployee(db, { name: "김철수" });

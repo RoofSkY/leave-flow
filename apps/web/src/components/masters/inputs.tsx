@@ -1,6 +1,6 @@
 // 기준정보 입력 요소: 묶음 필드, 요일 칩, 결재칸 칩, 색상 고르기, 정수 양 입력, 연도 선택
 import { useId, type ReactNode } from "react";
-import { APPROVAL_ROLES, WEEKDAY_LABELS, daysHoursToMinutes, type ApprovalRole } from "@leave-flow/shared";
+import { APPROVAL_ROLES, WEEKDAY_LABELS, daysHoursToMinutes, splitLeaveMinutes, type ApprovalRole } from "@leave-flow/shared";
 import { currentYear } from "../../lib/format.ts";
 import { Select, TextInput } from "../ui/index.tsx";
 import { WEEKDAY_ORDER } from "./labels.ts";
@@ -179,23 +179,25 @@ export function AmountBox({
 export interface DayHourValue {
   days: number | "";
   hours: number | "";
+  minutes: number | "";
 }
 
-/** 일·시간 → 분 (빈칸은 0, 1일 = dayMinutes) */
+/** 일·시간·분 → 분 (빈칸은 0, 1일 = dayMinutes) */
 export function dayHourToMinutes(v: DayHourValue, dayMinutes: number): number {
-  return daysHoursToMinutes(v.days || 0, v.hours || 0, dayMinutes);
+  return daysHoursToMinutes(v.days || 0, v.hours || 0, dayMinutes) + (v.minutes || 0);
 }
 
-/** 분 → 일·시간 (1일 = dayMinutes). 시간 단위로 나누어떨어지지 않는 분은 시간의 소수로 */
+/** 분 → 일·시간·분 (1일 = dayMinutes) */
 export function minutesToDayHour(minutes: number, dayMinutes: number): DayHourValue {
-  const days = Math.floor(minutes / dayMinutes);
-  return { days, hours: Math.round(((minutes - days * dayMinutes) / 60) * 100) / 100 };
+  const p = splitLeaveMinutes(minutes, dayMinutes);
+  return { days: p.days, hours: p.hours, minutes: p.minutes };
 }
 
 /**
- * 부여량을 [ ]일 [ ]시간 으로 직접 입력.
- * dayMinutes(1일 = 그 직원의 하루 근무시간)를 주면 칸을 벗어날 때 넘치는 시간을 일로 넘김 (예: 8시간 근무 3일 10시간 → 4일 2시간).
- * 근무시간이 다른 여러 직원에게 한 번에 줄 때처럼 1일이 정해지지 않으면 넘기지 않음.
+ * 부여량을 [ ]일 [ ]시간 [ ]분(10분 단위) 으로 직접 입력.
+ * 칸을 벗어날 때 60분 이상은 시간으로 넘기고, dayMinutes(1일 = 그 직원의 하루 근무시간)를 주면
+ * 넘치는 시간을 일로 넘김 (예: 8시간 근무 3일 10시간 → 4일 2시간).
+ * 근무시간이 다른 여러 직원에게 한 번에 줄 때처럼 1일이 정해지지 않으면 일로는 넘기지 않음.
  */
 export function DayHourInput({
   value,
@@ -209,9 +211,13 @@ export function DayHourInput({
   invalid?: boolean;
 }) {
   const carry = () => {
-    if (!dayMinutes || value.hours === "" || value.hours * 60 < dayMinutes) return;
-    const total = dayHourToMinutes(value, dayMinutes);
-    onChange(minutesToDayHour(total, dayMinutes));
+    const hours = value.hours || 0;
+    const minutes = value.minutes || 0;
+    if (dayMinutes && hours * 60 + minutes >= dayMinutes) {
+      onChange(minutesToDayHour(dayHourToMinutes(value, dayMinutes), dayMinutes));
+    } else if (minutes >= 60) {
+      onChange({ ...value, hours: hours + Math.floor(minutes / 60), minutes: minutes % 60 });
+    }
   };
 
   return (
@@ -231,6 +237,14 @@ export function DayHourInput({
         label="양 (시간)"
         invalid={invalid}
         onChange={(hours) => onChange({ ...value, hours })}
+      />
+      <AmountBox
+        value={value.minutes}
+        max={99999}
+        unit="분"
+        label="양 (분, 10분 단위)"
+        invalid={invalid}
+        onChange={(minutes) => onChange({ ...value, minutes })}
       />
     </div>
   );

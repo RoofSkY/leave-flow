@@ -371,8 +371,11 @@ if (-not $trayUser) { $trayUser = [Security.Principal.WindowsIdentity]::GetCurre
 if ($LASTEXITCODE -ne 0) { Fail "설치 폴더에 '$trayUser' 계정의 쓰기 권한을 주지 못했습니다." }
 
 $psExe = Join-Path $PSHOME "powershell.exe"
-$trayArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $InstallDir 'tray.ps1')`""
-$action = New-ScheduledTaskAction -Execute $psExe -Argument $trayArgs -WorkingDirectory $InstallDir
+# conhost --headless 로 감싸 콘솔 창을 아예 만들지 않음. powershell 을 바로 실행하면 기본 터미널이 Windows Terminal 일 때
+# -WindowStyle Hidden 이 먹지 않고 창이 남으며, 그 창을 닫으면 트레이와 서버가 함께 꺼짐
+$trayExe = Join-Path $env:WINDIR "System32\conhost.exe"
+$trayArgs = "--headless `"$psExe`" -NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $InstallDir 'tray.ps1')`""
+$action = New-ScheduledTaskAction -Execute $trayExe -Argument $trayArgs -WorkingDirectory $InstallDir
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
   -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
 $taskPrincipal = New-ScheduledTaskPrincipal -UserId $trayUser -LogonType Interactive -RunLevel Limited
@@ -387,7 +390,7 @@ else { Ok "작업 스케줄러 '$TaskName' 등록 ($trayUser 로그인 시 실�
 # 트레이에서 종료한 뒤 다시 켤 때 쓰는 바로가기 (이미 켜져 있으면 웹페이지를 엶)
 function New-TrayShortcut($path) {
   $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($path)
-  $shortcut.TargetPath = $psExe
+  $shortcut.TargetPath = $trayExe
   $shortcut.Arguments = $trayArgs
   $shortcut.WorkingDirectory = $InstallDir
   $shortcut.WindowStyle = 7

@@ -49,7 +49,7 @@ Source: "{#SourceDir}\scripts\uninstall.ps1"; DestDir: "{app}"; Flags: ignorever
 
 [Run]
 ; 트레이가 이미 켜져 있으므로 웹페이지만 열림
-Filename: "{#PowerShellExe}"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\tray.ps1"""; \
+Filename: "{sys}\conhost.exe"; Parameters: "--headless ""{#PowerShellExe}"" -NoProfile -ExecutionPolicy Bypass -File ""{app}\tray.ps1"""; \
   Description: "휴가원 관리 화면 열기"; Flags: postinstall nowait runasoriginaluser runhidden skipifsilent; Check: InstallSucceeded
 
 [UninstallRun]

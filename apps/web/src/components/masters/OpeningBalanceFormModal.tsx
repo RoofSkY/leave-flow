@@ -76,7 +76,7 @@ export function OpeningBalanceFormModal({
           leaveTypeId: null,
           year: defaultYear,
           baseDate: baseDateFor(defaultYear),
-          totalGranted: { days: "", hours: "" },
+          totalGranted: { days: "", hours: "", minutes: "" },
           remainingMinutes: 0,
         },
   );
@@ -110,7 +110,7 @@ export function OpeningBalanceFormModal({
 
   // 1일 = 그 직원의 하루 근무시간
   const dayMinutes = dayMinutesOf(employee);
-  const totalEmpty = form.totalGranted.days === "" && form.totalGranted.hours === "";
+  const totalEmpty = form.totalGranted.days === "" && form.totalGranted.hours === "" && form.totalGranted.minutes === "";
   const totalMinutes = type && !totalEmpty ? dayHourToMinutes(form.totalGranted, dayMinutes) : null;
   const usedMinutes = totalMinutes === null ? null : totalMinutes - form.remainingMinutes;
   const f = (m: number) => (type ? formatLeaveMinutes(m, dayMinutes) : "");

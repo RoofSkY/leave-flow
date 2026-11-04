@@ -73,7 +73,7 @@ export function GrantFormModal({
       employeeIds: empOk && defaults.employeeId !== null ? [defaults.employeeId] : [],
       leaveTypeId: typeOk ? defaults.leaveTypeId : null,
       grantDate: localToday(),
-      amount: { days: "", hours: "" },
+      amount: { days: "", hours: "", minutes: "" },
       note: "",
     };
   });
@@ -116,9 +116,14 @@ export function GrantFormModal({
         ? "하루 근무시간이 다른 직원이 섞여 있어, 1일은 직원마다 그 사람의 하루 근무시간으로 계산합니다."
         : "1일 = 그 직원의 하루 근무시간";
   // 검사·저장용: 빈칸은 0
-  const payload = { ...form, days: form.amount.days || 0, hours: form.amount.hours || 0 };
-  const amountText = (days: number, hours: number) =>
-    [days && `${days}일`, hours && `${hours}시간`].filter(Boolean).join(" ") || "0일";
+  const payload = {
+    ...form,
+    days: form.amount.days || 0,
+    hours: form.amount.hours || 0,
+    minutes: form.amount.minutes || 0,
+  };
+  const amountText = (days: number, hours: number, minutes: number) =>
+    [days && `${days}일`, hours && `${hours}시간`, minutes && `${minutes}분`].filter(Boolean).join(" ") || "0일";
 
   const save = useMutation({
     mutationFn: (input: { edit: GrantInput } | { bulk: GrantBulkInput }): Promise<Grant | Grant[]> =>
@@ -142,7 +147,7 @@ export function GrantFormModal({
       missing[grant ? "employeeId" : "employeeIds"] = grant ? "직원을 선택하세요." : "직원을 한 명 이상 선택하세요.";
     }
     if (form.leaveTypeId === null) missing.leaveTypeId = "휴가 종류를 선택하세요.";
-    if (!form.amount.days && !form.amount.hours) missing.days = "부여량을 입력하세요.";
+    if (!form.amount.days && !form.amount.hours && !form.amount.minutes) missing.days = "부여량을 입력하세요.";
     if (Object.keys(missing).length) {
       setErrors(missing);
       return;
@@ -177,7 +182,7 @@ export function GrantFormModal({
       const names = r.data.employeeIds.map((id) => employees.find((e) => e.id === id)?.name ?? "");
       const ok = await confirm({
         title: "여러 명에게 부여",
-        message: `${names.length}명에게 ${type.name} ${amountText(r.data.days, r.data.hours)} (${formatDateKo(r.data.grantDate, true)})을 부여할까요?${dayMinutes === undefined ? "\n1일은 직원마다 그 사람의 하루 근무시간으로 계산합니다." : ""}\n\n${names.join(", ")}`,
+        message: `${names.length}명에게 ${type.name} ${amountText(r.data.days, r.data.hours, r.data.minutes)} (${formatDateKo(r.data.grantDate, true)})을 부여할까요?${dayMinutes === undefined ? "\n1일은 직원마다 그 사람의 하루 근무시간으로 계산합니다." : ""}\n\n${names.join(", ")}`,
         confirmLabel: `${names.length}명에게 부여`,
       });
       if (!ok) return;
@@ -252,11 +257,11 @@ export function GrantFormModal({
           <Field label="부여일" required error={errors.grantDate}>
             <DateInput value={form.grantDate} invalid={!!errors.grantDate} onChange={(v) => set("grantDate", v)} />
           </Field>
-          <Field label="양" required hint={amountHint} error={errors.days ?? errors.hours}>
+          <Field label="양" required hint={amountHint} error={errors.days ?? errors.hours ?? errors.minutes}>
             <DayHourInput
               value={form.amount}
               dayMinutes={dayMinutes}
-              invalid={!!(errors.days ?? errors.hours)}
+              invalid={!!(errors.days ?? errors.hours ?? errors.minutes)}
               onChange={(v) => set("amount", v)}
             />
           </Field>

@@ -59,9 +59,9 @@ function resolveRefs(ctx: AppContext, input: GrantInput, keepTypeId: number | nu
 const amountText = (g: Grant, employee: Employee) =>
   `${formatLeaveMinutes(g.minutes, dayMinutesOf(employee))}, ${formatDotDate(g.grantDate)}`;
 
-/** 일·시간 → 분 (1일 = 그 직원의 하루 근무시간) */
-const grantMinutes = (input: { days: number; hours: number }, employee: Employee) =>
-  daysHoursToMinutes(input.days, input.hours, dayMinutesOf(employee));
+/** 일·시간·분 → 분 (1일 = 그 직원의 하루 근무시간) */
+const grantMinutes = (input: { days: number; hours: number; minutes: number }, employee: Employee) =>
+  daysHoursToMinutes(input.days, input.hours, dayMinutesOf(employee)) + input.minutes;
 
 export function registerGrantRoutes(app: FastifyInstance, ctx: AppContext): void {
   const { db } = ctx;
