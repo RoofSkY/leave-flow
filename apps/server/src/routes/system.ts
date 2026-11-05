@@ -27,7 +27,7 @@ const restoreInput = z.object({
 });
 
 /**
- * 시스템: 버전·업데이트, 백업·복구, 엑셀 내려받기. docs/api.md "시스템" 참고.
+ * 시스템: 버전·업데이트, 백업·복구, 엑셀 내려받기. docs/developers/api/system.md 참고.
  * requestExit(code): 서버를 종료시켜 launcher 가 재시작하게 함 (업데이트 적용 = 75, 백업 복구 = 76)
  */
 export function registerSystemRoutes(

@@ -1,5 +1,5 @@
 # 태그 v<버전> 을 push 하면 테스트·타입 검사 후 배포 파일(zip)과 설치 프로그램(exe)을 만들어 GitHub Release 에 올린다.
-# 사무실 서버는 이 Release 를 자동으로 받아 업데이트한다 (docs/운영가이드.md "새 버전 배포").
+# 사무실 서버는 이 Release 를 자동으로 받아 업데이트한다 (docs/developers/publishing.md).
 name: release
 
 on:

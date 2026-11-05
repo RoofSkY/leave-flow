@@ -430,7 +430,7 @@ export async function runScheduledUpdateCheck(
 /**
  * config.updateRepo 의 GitHub Releases 를 서버 시작 약 2분 뒤와 config.updateCheckHours 마다 확인
  * (autoUpdate 가 꺼져 있어도 확인은 함). config.autoUpdate 이면 새 버전을 받아 적용 (launcher 와 연동).
- * 다음 확인은 이번 확인이 끝난 뒤에 예약함. docs/api.md "자동 업데이트" 참고.
+ * 다음 확인은 이번 확인이 끝난 뒤에 예약함. docs/developers/architecture.md 참고.
  * 반환: 타이머를 정리하는 함수.
  */
 export function startUpdateScheduler(ctx: AppContext, requestExit: (code: number) => void): () => void {
