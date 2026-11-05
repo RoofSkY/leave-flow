@@ -208,7 +208,7 @@ function restoreDbBeforeUpdate(backupFile) {
 
 /** 정상 기동한 새 버전의 launcher 파일로 바꿔 둠 (다음에 트레이로 다시 켤 때부터 적용) */
 function adoptLauncherFiles(version) {
-  for (const name of ["state.mjs", "launcher.mjs", "tray.ps1"]) {
+  for (const name of ["state.mjs", "launcher.mjs", "leave-flow.ico", "tray.ps1"]) {
     const src = path.join(versionsDir, version, name);
     const dst = path.join(home, name);
     if (!existsSync(src)) continue;

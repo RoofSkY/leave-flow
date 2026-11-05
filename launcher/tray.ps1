@@ -10,13 +10,32 @@ Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 $InstallDir = $PSScriptRoot
 $Title = "leave-flow 휴가원 관리"
 
+# 콘솔 창이 붙어 있으면 (v0.2.0 이 등록한 예약 작업·바로가기처럼 powershell 을 바로 실행한 경우) conhost --headless 로
+# 다시 실행하고 끝냄 → 창이 바로 닫히고, 창을 닫아도 서버가 꺼지지 않음. 자동 업데이트로는 tray.ps1 만 바뀌므로
+# 예약 작업의 실행 명령도 여기서 고침 (권한이 없으면 실패해도 그대로 둠 — 다음 로그인에도 이 경로로 다시 실행됨)
+Add-Type -Namespace LeaveFlow -Name Native -MemberDefinition '[DllImport("kernel32.dll")] public static extern System.IntPtr GetConsoleWindow();'
+if ([LeaveFlow.Native]::GetConsoleWindow() -ne [IntPtr]::Zero -and -not $env:LEAVE_FLOW_HEADLESS) {
+  $env:LEAVE_FLOW_HEADLESS = "1"
+  $conhostExe = Join-Path $env:WINDIR "System32\conhost.exe"
+  $trayArgs = "--headless `"$(Join-Path $PSHOME 'powershell.exe')`" -NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+  Start-Process -FilePath $conhostExe -ArgumentList $trayArgs -WorkingDirectory $InstallDir -WindowStyle Hidden
+  try {
+    $task = Get-ScheduledTask -TaskName "leave-flow" -ErrorAction Stop
+    if ($task.Actions[0].Arguments -match 'tray\.ps1' -and $task.Actions[0].Execute -notmatch 'conhost\.exe$') {
+      Set-ScheduledTask -TaskName "leave-flow" -ErrorAction Stop `
+        -Action (New-ScheduledTaskAction -Execute $conhostExe -Argument $trayArgs -WorkingDirectory $InstallDir) | Out-Null
+    }
+  } catch { }
+  exit 0
+}
+
 function Show-Error($msg) {
   [void][System.Windows.Forms.MessageBox]::Show($msg, $Title, "OK", "Error")
 }
 
-# 접속 주소 (config.json 의 port·host. 모든 주소에서 받으면 localhost)
+# 접속 주소 (config.json 의 port·host. 모든 주소에서 받으면 이 PC의 사무실 IP — 직원들이 쓰는 주소와 같게)
 $port = 8080
-$hostName = "localhost"
+$hostName = $null
 try {
   $config = Get-Content -Path (Join-Path $InstallDir "config.json") -Raw -Encoding UTF8 | ConvertFrom-Json
   if ($config.port) { $port = [int]$config.port }
@@ -26,9 +45,19 @@ try {
     $hostName = $h
   }
 } catch { }
-$url = "http://${hostName}:$port"
 
-function Open-Web { Start-Process $url }
+# 기본 게이트웨이가 있는 어댑터의 IPv4 (가상 어댑터 제외). 로그인 직후엔 네트워크가 늦게 잡힐 수 있어 열 때마다 찾음. 없으면 localhost
+function Get-Url {
+  if ($hostName) { return "http://${hostName}:$port" }
+  $ip = Get-NetIPConfiguration -ErrorAction SilentlyContinue |
+    Where-Object { $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq "Up" } |
+    ForEach-Object { $_.IPv4Address.IPAddress } |
+    Where-Object { $_ -and $_ -notlike "169.254.*" } | Select-Object -First 1
+  if (-not $ip) { $ip = "localhost" }
+  return "http://${ip}:$port"
+}
+
+function Open-Web { Start-Process (Get-Url) }
 
 $mutex = New-Object System.Threading.Mutex($false, "Local\leave-flow-tray")
 if (-not $mutex.WaitOne(0)) {
@@ -56,18 +85,22 @@ $launcher = [System.Diagnostics.Process]::Start($psi)
 $launcher.BeginOutputReadLine()
 $launcher.BeginErrorReadLine()
 
-# 아이콘: 웹 화면의 아이콘(파란 달력)과 같은 모양
-$bmp = New-Object System.Drawing.Bitmap 32, 32
-$g = [System.Drawing.Graphics]::FromImage($bmp)
-$g.SmoothingMode = "AntiAlias"
-$g.FillRectangle((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(35, 131, 226))), 3, 5, 26, 24)
-$g.FillRectangle((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(26, 111, 196))), 3, 5, 26, 7)
-$g.FillEllipse([System.Drawing.Brushes]::White, 8, 17, 6, 6)
-$g.Dispose()
-
 $tray = New-Object System.Windows.Forms.NotifyIcon
-$tray.Icon = [System.Drawing.Icon]::FromHandle($bmp.GetHicon())
-$tray.Text = "$Title ($url)"
+# 아이콘: 바로가기와 같은 leave-flow.ico (웹 화면의 아이콘과 같은 파란 달력). 파일이 없으면 같은 모양을 그림
+$iconPath = Join-Path $InstallDir "leave-flow.ico"
+if (Test-Path $iconPath) {
+  $tray.Icon = New-Object System.Drawing.Icon($iconPath, [System.Windows.Forms.SystemInformation]::SmallIconSize)
+} else {
+  $bmp = New-Object System.Drawing.Bitmap 32, 32
+  $g = [System.Drawing.Graphics]::FromImage($bmp)
+  $g.SmoothingMode = "AntiAlias"
+  $g.FillRectangle((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(35, 131, 226))), 3, 5, 26, 24)
+  $g.FillRectangle((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(26, 111, 196))), 3, 5, 26, 7)
+  $g.FillEllipse([System.Drawing.Brushes]::White, 8, 17, 6, 6)
+  $g.Dispose()
+  $tray.Icon = [System.Drawing.Icon]::FromHandle($bmp.GetHicon())
+}
+$tray.Text = "$Title ($(Get-Url))"
 
 $script:quitting = $false
 function Quit-Tray {
@@ -96,7 +129,8 @@ $exitItem.add_Click({
   Quit-Tray
 })
 $tray.ContextMenuStrip = $menu
-$tray.add_DoubleClick({ Open-Web })
+# 왼쪽 클릭으로 웹페이지 열기 (더블클릭해도 MouseClick 은 한 번만 발생. 오른쪽 클릭은 메뉴)
+$tray.add_MouseClick({ param($s, $e) if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) { Open-Web } })
 $tray.Visible = $true
 
 # launcher 가 스스로 끝나면 (설치 파일 문제 등) 알리고 트레이도 끝냄

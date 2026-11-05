@@ -1,7 +1,7 @@
 // 배포 파일 만들기: npm run build → release/leave-flow-<버전>/ 조립 → release/leave-flow-<버전>.zip + .sha256
 //   (+ Inno Setup 6 이 있으면 설치 프로그램 release/leave-flow-setup-<버전>.exe)
 // 사용: npm run package   (이미 빌드했으면 node scripts/package-release.mjs --no-build)
-// zip 안 (최상위): server.mjs(.map), web/, launcher.mjs, state.mjs, tray.ps1, scripts/(.ps1·.cmd), README.md, docs/운영가이드.md, config.example.json, release.json
+// zip 안 (최상위): server.mjs(.map), web/, launcher.mjs, state.mjs, tray.ps1, leave-flow.ico, scripts/(.ps1·.cmd), README.md, docs/, config.example.json, release.json
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -54,9 +54,10 @@ copy("apps/web/dist", "web");
 copy("launcher/launcher.mjs", "launcher.mjs");
 copy("launcher/state.mjs", "state.mjs");
 copy("launcher/tray.ps1", "tray.ps1");
+copy("launcher/leave-flow.ico", "leave-flow.ico");
 copy("scripts/windows", "scripts");
 copy("README.md");
-copy("docs/운영가이드.md", "docs/운영가이드.md");
+copy("docs", "docs");
 
 const repo = updateRepo();
 writeFileSync(path.join(outDir, "release.json"), `${JSON.stringify({ version, repo }, null, 2)}\n`);

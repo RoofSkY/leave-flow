@@ -89,7 +89,7 @@ if (-not (Test-Path $InstallDir)) {
   Remove-Item -Path $InstallDir -Recurse -Force
   Ok "설치 폴더를 모두 지웠습니다."
 } else {
-  foreach ($name in @("node", "versions", "updates", "launcher.mjs", "state.mjs", "tray.ps1", "state.json", "state.json.tmp")) {
+  foreach ($name in @("node", "versions", "updates", "launcher.mjs", "state.mjs", "tray.ps1", "leave-flow.ico", "state.json", "state.json.tmp")) {
     $p = Join-Path $InstallDir $name
     if (Test-Path $p) { Remove-Item -Path $p -Recurse -Force }
   }

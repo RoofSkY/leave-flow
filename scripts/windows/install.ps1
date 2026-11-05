@@ -268,6 +268,7 @@ if (-not $sameFolder) {
 Copy-Item -Path (Join-Path $source "launcher.mjs") -Destination (Join-Path $InstallDir "launcher.mjs") -Force
 Copy-Item -Path (Join-Path $source "state.mjs") -Destination (Join-Path $InstallDir "state.mjs") -Force
 Copy-Item -Path (Join-Path $source "tray.ps1") -Destination (Join-Path $InstallDir "tray.ps1") -Force
+Copy-Item -Path (Join-Path $source "leave-flow.ico") -Destination (Join-Path $InstallDir "leave-flow.ico") -Force
 Ok "완료"
 
 $statePath = Join-Path $InstallDir "state.json"
@@ -394,6 +395,8 @@ function New-TrayShortcut($path) {
   $shortcut.Arguments = $trayArgs
   $shortcut.WorkingDirectory = $InstallDir
   $shortcut.WindowStyle = 7
+  # 트레이와 같은 아이콘 (없으면 conhost 아이콘이 보임)
+  $shortcut.IconLocation = "$(Join-Path $InstallDir 'leave-flow.ico'),0"
   $shortcut.Description = "휴가원 관리 서버 켜기 (켜져 있으면 웹페이지 열기)"
   $shortcut.Save()
 }
@@ -459,4 +462,4 @@ Write-Host "작업 표시줄 오른쪽 알림 영역(트레이)의 파란 달력
 if ($NoAutoStart) { Write-Host "Windows 에 로그인해도 자동으로 켜지지 않습니다. 'leave-flow 휴가원 관리' 바로가기(시작 메뉴)로 켭니다." }
 else { Write-Host "Windows 에 로그인하면 자동으로 켜지고, 종료한 뒤에는 'leave-flow 휴가원 관리' 바로가기(시작 메뉴)로 다시 켭니다." }
 Write-Host "처음 설정 순서: 관리 > 휴가 종류 → 설정 → 직원 → 기존 잔여량 → 부여 내역"
-Write-Host "자세한 내용: $versionDir\docs\운영가이드.md"
+Write-Host "자세한 내용: $versionDir\docs\index.md"

@@ -1,8 +1,8 @@
 {
 	"name": "leave-flow",
-	"version": "0.2.1",
+	"version": "0.2.2",
 	"private": true,
-	"description": "휴가원·시간외근무 신청서 관리 (사무실 LAN 전용)",
+	"description": "휴가원·시간외근무 신청서 관리",
 	"type": "module",
 	"workspaces": [
 		"packages/*",
