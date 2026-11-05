@@ -326,6 +326,8 @@ export const leaveRequestInput = z.object({
   reason: trimmed(500, "휴가사유").min(1, "휴가사유를 입력하세요."),
   emergencyContact: trimmed(50, "비상연락처").min(1, "비상연락처를 입력하세요."),
   handoverNote: trimmed(2000, "업무인계 및 기타사항"),
+  /** 미차감: 이 휴가원의 사용은 잔여에서 빼지 않음 */
+  noDeduct: z.boolean().default(false),
 });
 
 /**
@@ -343,6 +345,8 @@ export const leavePreviewInput = z.object({
   items: z.array(leaveRequestItemInput).max(20, "휴가 항목은 20개까지 추가할 수 있습니다."),
   /** 수정 중인 휴가원 (잔여·겹침 계산에서 제외) */
   excludeRequestId: idSchema.nullable().optional(),
+  /** 미차감 휴가원 (신청 후 잔여 = 신청 전 잔여, 잔여 부족 경고 없음) */
+  noDeduct: z.boolean().optional(),
 });
 
 /** 시간외근무 적립 휴가 종류 (신청서에서 대상자마다 고름) */

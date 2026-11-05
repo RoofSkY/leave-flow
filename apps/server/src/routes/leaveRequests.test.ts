@@ -951,3 +951,55 @@ describe("적용 대상: 소속·구분 조건", () => {
     expect((await s.app.inject({ method: "DELETE", url: `/api/departments/${unused}` })).statusCode).toBe(204);
   });
 });
+
+describe("미차감 휴가원", () => {
+  it("차감하는 종류라도 잔여·경고·미리보기·출력에서 사용으로 세지 않음, 수정으로 끄고 켤 수 있음", async () => {
+    const s = await setup();
+    const items = [{ leaveTypeId: s.sick, startAt: "2026-10-26T10:00", endAt: "2026-10-26T19:00" }];
+    const used = async () =>
+      (await s.app.inject({ url: `/api/balances?employeeId=${s.emp}&year=2026` }))
+        .json<{ leaveTypeId: number; usedMinutes: number }[]>()
+        .find((b) => b.leaveTypeId === s.sick)!.usedMinutes;
+
+    // 미리보기: 신청 후 잔여 = 신청 전 잔여, 잔여 부족 경고 없음 (병가는 부여가 없음)
+    const preview = (
+      await s.app.inject({
+        method: "POST",
+        url: "/api/leave-requests/preview",
+        payload: { employeeId: s.emp, items, noDeduct: true },
+      })
+    ).json<LeavePreview>();
+    expect(preview.totalsByType).toEqual([{ leaveTypeId: s.sick, minutes: 480 }]);
+    expect(preview.balancesAfter).toEqual(preview.balancesBefore);
+    expect(preview.warnings).toEqual([]);
+
+    const res = await s.create(items, { noDeduct: true });
+    expect(res.statusCode).toBe(201);
+    const { request, warnings } = res.json<LeaveSaveResult>();
+    expect(request.noDeduct).toBe(true);
+    expect(request.totalMinutes).toBe(480);
+    expect(warnings).toEqual([]);
+    expect(await used()).toBe(0);
+
+    // 출력: 금회·누적 사용에 넣지 않음 (체크박스는 그대로)
+    const print = (await s.app.inject({ url: `/api/leave-requests/${request.id}/print-data` })).json<LeavePrintData>();
+    expect(print.balanceTable.find((b) => b.leaveTypeId === s.sick)).toMatchObject({ currentMinutes: 0, usedMinutes: 0 });
+    expect(print.checkboxes.find((c) => c.leaveTypeId === s.sick)?.checked).toBe(true);
+
+    // 수정으로 미차감을 끄면 차감 + 잔여 부족 경고, 값을 빼고 보내면 미차감 아님
+    const off = await s.put(request.id, s.body(items));
+    expect(off.statusCode).toBe(200);
+    expect(off.json<LeaveSaveResult>().request.noDeduct).toBe(false);
+    expect(off.json<LeaveSaveResult>().warnings.map((w) => w.code)).toEqual(["over_balance"]);
+    expect(await used()).toBe(480);
+
+    const on = await s.put(request.id, s.body(items, { noDeduct: true }));
+    expect(on.json<LeaveSaveResult>().request.noDeduct).toBe(true);
+    expect(await used()).toBe(0);
+
+    // 다른 휴가원의 잔여 부족 경고에도 미차감 휴가원은 들어가지 않음
+    insertGrant(s.db, { employeeId: s.emp, leaveTypeId: s.sick, grantDate: "2026-01-01", minutes: 480 });
+    const other = await s.createOk([{ leaveTypeId: s.sick, startAt: "2026-10-27T10:00", endAt: "2026-10-27T19:00" }]);
+    expect(other.warnings.filter((w) => w.code === "over_balance")).toEqual([]);
+  });
+});

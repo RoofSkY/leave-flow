@@ -30,6 +30,7 @@ import {
   Badge,
   Button,
   Callout,
+  Checkbox,
   ColorDot,
   ErrorText,
   Field,
@@ -64,6 +65,8 @@ interface Draft {
   reason: string;
   emergencyContact: string;
   handoverNote: string;
+  /** 미차감: 이 휴가원의 사용은 잔여에서 빼지 않음 */
+  noDeduct: boolean;
 }
 
 const MAX_ITEMS = 20;
@@ -178,6 +181,7 @@ function initialDraft(target: EditorTarget, types: LeaveType[]): Draft {
       reason: r.reason,
       emergencyContact: r.emergencyContact,
       handoverNote: r.handoverNote,
+      noDeduct: r.noDeduct,
     };
   }
   const p = target.prefill;
@@ -196,6 +200,7 @@ function initialDraft(target: EditorTarget, types: LeaveType[]): Draft {
     reason: "개인일정",
     emergencyContact: "",
     handoverNote: "",
+    noDeduct: false,
   };
 }
 
@@ -290,6 +295,7 @@ function EditorForm({
           employeeId: draft.employeeId,
           items: complete.map((idx) => toInput(draft.items[idx]!)),
           excludeRequestId: editing?.id ?? null,
+          noDeduct: draft.noDeduct,
         },
         indexes: complete,
       })
@@ -428,6 +434,7 @@ function EditorForm({
       reason: draft.reason,
       emergencyContact: draft.emergencyContact,
       handoverNote: draft.handoverNote,
+      noDeduct: draft.noDeduct,
     };
     setSaving(true);
     try {
@@ -637,6 +644,12 @@ function EditorForm({
                 })}
               </div>
             </div>
+
+            <Checkbox
+              label="미차감 (이 휴가원은 잔여에서 빼지 않음)"
+              checked={draft.noDeduct}
+              onChange={(on) => setDraft((d) => ({ ...d, noDeduct: on }))}
+            />
 
             <PreviewPanel
               hasEmployee={!!employee}

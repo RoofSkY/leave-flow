@@ -211,7 +211,15 @@ export function LeaveListPage() {
                       ))}
                     </ul>
                   </td>
-                  <td className="num nowrap">{totalText(r)}</td>
+                  <td className="num nowrap">
+                    {totalText(r)}
+                    {r.noDeduct && (
+                      <>
+                        {" "}
+                        <Badge title="이 휴가원의 사용은 잔여에서 빼지 않습니다.">미차감</Badge>
+                      </>
+                    )}
+                  </td>
                   <td>
                     {r.status === "active" ? <Badge tone="accent">신청</Badge> : <Badge tone="danger">취소됨</Badge>}
                   </td>

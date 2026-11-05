@@ -28,7 +28,7 @@ export interface BalanceOptions {
 
 /**
  * 직원의 휴가 종류별 부여·사용·잔여 (year 기준).
- * 사용량 = 신청 상태 휴가원 항목 + 기존 잔여 입력의 기존 사용량. 취소된 휴가원은 제외.
+ * 사용량 = 신청 상태 휴가원 항목 + 기존 잔여 입력의 기존 사용량. 취소된 휴가원·미차감 휴가원은 제외.
  * 부여량 = 부여 내역(직접 입력 + 적립된 시간외근무) + 기존 잔여 입력의 총 부여량.
  * 기존 잔여 입력이 있는 (종류, 연도)는 기준일자 이후의 부여·사용만 더함 (computeBalances 참고).
  * 적용 대상 직원을 정한 종류는 대상이 아니면 기록이 있을 때만 행이 생김.
@@ -74,7 +74,7 @@ export function getEmployeeBalances(
     db,
     `SELECT i.leave_type_id, i.start_at, i.minutes_by_year, i.minutes_by_date
        FROM leave_request_items i JOIN leave_requests r ON r.id = i.request_id
-      WHERE r.employee_id = ? AND r.status = 'active' AND r.id <> ?`,
+      WHERE r.employee_id = ? AND r.status = 'active' AND r.no_deduct = 0 AND r.id <> ?`,
     [employeeId, opts.excludeRequestId ?? -1],
   ).map<BalanceUsage>((r) => {
     const leaveTypeId = toNum(r.leave_type_id);

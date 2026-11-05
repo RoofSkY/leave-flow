@@ -226,4 +226,12 @@ CREATE TABLE settings (
 );
 `,
   },
+  {
+    version: 2,
+    name: "leave_request_no_deduct",
+    sql: `
+-- 미차감 휴가원: 차감하는 종류라도 이 휴가원의 사용은 잔여에 넣지 않음
+ALTER TABLE leave_requests ADD COLUMN no_deduct INTEGER NOT NULL DEFAULT 0 CHECK (no_deduct IN (0, 1));
+`,
+  },
 ];

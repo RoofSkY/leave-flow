@@ -206,6 +206,7 @@ function leaveRequestFromRow(r: Row, items: LeaveRequestItem[]): LeaveRequest {
     reason: String(r.reason),
     emergencyContact: String(r.emergency_contact),
     handoverNote: String(r.handover_note),
+    noDeduct: toBool(r.no_deduct),
     status: r.status === "cancelled" ? "cancelled" : "active",
     cancelledAt: toNullableStr(r.cancelled_at),
     lastPrintedAt: toNullableStr(r.last_printed_at),

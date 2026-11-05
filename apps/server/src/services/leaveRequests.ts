@@ -137,7 +137,7 @@ function overBalanceYears(
       db,
       `SELECT i.leave_type_id, i.minutes_by_year, NULL AS year
          FROM leave_request_items i JOIN leave_requests r ON r.id = i.request_id
-        WHERE r.employee_id = ? AND r.status = 'active' AND r.id <> ?
+        WHERE r.employee_id = ? AND r.status = 'active' AND r.no_deduct = 0 AND r.id <> ?
        UNION ALL
        SELECT leave_type_id, NULL, CAST(substr(grant_date, 1, 4) AS INTEGER) FROM leave_grants WHERE employee_id = ?
        UNION ALL
@@ -162,18 +162,20 @@ function overBalanceYears(
 /**
  * 저장은 허용하는 경고: 잔여 초과, 기존 휴가와 겹침, 항목끼리 겹침.
  * items는 아직 사용량에 반영되지 않은 신청 (excludeRequestId 휴가원은 DB 사용량·겹침 검사에서 제외).
+ * 미차감 휴가원(noDeduct)은 잔여를 쓰지 않으므로 잔여 초과는 확인하지 않음.
  */
 export function collectWarnings(
   db: Db,
   employeeId: number,
   items: readonly WarningItem[],
   excludeRequestId: number | null,
+  noDeduct = false,
 ): Warning[] {
   const warnings: Warning[] = [];
   if (items.length === 0) return warnings;
 
   // 잔여 초과: 이번 사용이 들어가는 (종류, 연도)마다 신청 후 잔여가 음수인지
-  const years = overBalanceYears(db, employeeId, items, excludeRequestId);
+  const years = noDeduct ? [] : overBalanceYears(db, employeeId, items, excludeRequestId);
   const extraUsage = extraUsageOf(items);
   const dayMinutes = dayMinutesOf(getEmployee(db, employeeId));
   const warned = new Set<string>();
@@ -206,9 +208,11 @@ export function collectWarnings(
   }
 
   // 정한 날짜 소멸·부여 후 기간 소멸: 이번 항목이 쓰는 날마다 (기간이 바뀌는 첫날 기준) 신청 후 잔여 확인
-  const dated = listLeaveTypes(db, { includeInactive: true }).filter(
-    (t) => t.balanceMode === "expire_date" || t.balanceMode === "grant_period",
-  );
+  const dated = noDeduct
+    ? []
+    : listLeaveTypes(db, { includeInactive: true }).filter(
+        (t) => t.balanceMode === "expire_date" || t.balanceMode === "grant_period",
+      );
   for (const t of dated) {
     const days = [...new Set(items.filter((i) => i.leaveTypeId === t.id).flatMap((i) => i.byDate.map((d) => d.date)))].sort();
     const checked = new Set<string>();
@@ -300,6 +304,7 @@ export function buildPreview(
   excludeRequestId: number | null,
   allowInactive: ReadonlySet<number>,
   today: string,
+  noDeduct = false,
 ): LeavePreview {
   const evaluated = evaluateItems(db, employeeId, items, schedule, allowInactive);
   const valid = warningItemsOf(evaluated);
@@ -322,13 +327,16 @@ export function buildPreview(
     date,
     today,
   });
-  const balancesAfter = getEmployeeBalances(db, employeeId, year, {
-    excludeRequestId,
-    includeInactiveTypes: true,
-    extraUsage: extraUsageOf(valid),
-    date,
-    today,
-  });
+  // 미차감 휴가원은 신청 후 잔여 = 신청 전 잔여
+  const balancesAfter = noDeduct
+    ? balancesBefore
+    : getEmployeeBalances(db, employeeId, year, {
+        excludeRequestId,
+        includeInactiveTypes: true,
+        extraUsage: extraUsageOf(valid),
+        date,
+        today,
+      });
 
   return {
     items: evaluated.map((e) => ({
@@ -339,7 +347,7 @@ export function buildPreview(
     totalsByType: [...totals].map(([leaveTypeId, minutes]) => ({ leaveTypeId, minutes })),
     balancesBefore: visible(balancesBefore),
     balancesAfter: visible(balancesAfter),
-    warnings: collectWarnings(db, employeeId, valid, excludeRequestId),
+    warnings: collectWarnings(db, employeeId, valid, excludeRequestId, noDeduct),
   };
 }
 
@@ -393,10 +401,13 @@ export function buildPrintData(db: Db, request: LeaveRequest, today: string): Le
   );
   // 보이는 이름 (양식 안에서 겹치면 관리 이름으로 구별)
   const label = distinctLeaveTypeLabels(shown);
+  // 미차감 휴가원은 누적사용에 들어가지 않으므로 금회 사용도 0
   const currentOf = (typeId: number) =>
-    request.items
-      .filter((i) => i.leaveTypeId === typeId)
-      .reduce((sum, i) => sum + (i.minutesByYear[String(year)] ?? 0), 0);
+    request.noDeduct
+      ? 0
+      : request.items
+          .filter((i) => i.leaveTypeId === typeId)
+          .reduce((sum, i) => sum + (i.minutesByYear[String(year)] ?? 0), 0);
   // 결재칸 = 지금 직원 설정 (영구 삭제된 직원도 행은 남아 있음)
   const employee = queryOne(db, "SELECT approval_roles FROM employees WHERE id = ?", [request.employeeId]);
 

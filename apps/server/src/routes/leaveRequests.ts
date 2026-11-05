@@ -97,7 +97,16 @@ export function registerLeaveRequestRoutes(app: FastifyInstance, ctx: AppContext
       if (!existing) throw notFound("휴가원을 찾을 수 없습니다.");
       allowInactive = new Set(existing.items.map((i) => i.leaveTypeId));
     }
-    return buildPreview(db, employee.id, scheduleOf(employee), input.items, excludeId, allowInactive, ctx.today());
+    return buildPreview(
+      db,
+      employee.id,
+      scheduleOf(employee),
+      input.items,
+      excludeId,
+      allowInactive,
+      ctx.today(),
+      input.noDeduct ?? false,
+    );
   });
 
   app.post("/leave-requests", async (req, reply) => {
@@ -113,8 +122,8 @@ export function registerLeaveRequestRoutes(app: FastifyInstance, ctx: AppContext
       const id = execute(
         db,
         `INSERT INTO leave_requests (employee_id, employee_name, department, applied_on, work_days, work_start, work_end,
-           reason, emergency_contact, handover_note, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+           reason, emergency_contact, handover_note, no_deduct, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
         [
           employee.id,
           employee.name,
@@ -126,6 +135,7 @@ export function registerLeaveRequestRoutes(app: FastifyInstance, ctx: AppContext
           input.reason,
           input.emergencyContact,
           input.handoverNote,
+          input.noDeduct ? 1 : 0,
           now,
           now,
         ],
@@ -145,7 +155,7 @@ export function registerLeaveRequestRoutes(app: FastifyInstance, ctx: AppContext
         },
         now,
       );
-      return { request, warnings: collectWarnings(db, employee.id, warningItemsOf(evaluated), id) };
+      return { request, warnings: collectWarnings(db, employee.id, warningItemsOf(evaluated), id, input.noDeduct) };
     });
     return reply.status(201).send(result);
   });
@@ -177,7 +187,7 @@ export function registerLeaveRequestRoutes(app: FastifyInstance, ctx: AppContext
       execute(
         db,
         `UPDATE leave_requests SET work_days = ?, work_start = ?, work_end = ?, reason = ?, emergency_contact = ?,
-           handover_note = ?, updated_at = ? WHERE id = ?`,
+           handover_note = ?, no_deduct = ?, updated_at = ? WHERE id = ?`,
         [
           JSON.stringify(schedule.workDays),
           schedule.workStart,
@@ -185,6 +195,7 @@ export function registerLeaveRequestRoutes(app: FastifyInstance, ctx: AppContext
           input.reason,
           input.emergencyContact,
           input.handoverNote,
+          input.noDeduct ? 1 : 0,
           now,
           before.id,
         ],
@@ -206,7 +217,10 @@ export function registerLeaveRequestRoutes(app: FastifyInstance, ctx: AppContext
         },
         now,
       );
-      return { request, warnings: collectWarnings(db, before.employeeId, warningItemsOf(evaluated), before.id) };
+      return {
+        request,
+        warnings: collectWarnings(db, before.employeeId, warningItemsOf(evaluated), before.id, input.noDeduct),
+      };
     });
   });
 
@@ -296,6 +310,7 @@ export function registerLeaveRequestRoutes(app: FastifyInstance, ctx: AppContext
         before.employeeId,
         items.filter((i) => Object.keys(i.minutesByYear).length > 0),
         before.id,
+        before.noDeduct,
       );
       return { request, warnings: [...warnings, ...zeroWarnings] };
     });

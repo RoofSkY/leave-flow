@@ -148,6 +148,7 @@ ${periodsText(req)}
             {r.department && <span className="muted">{r.department}</span>}
             {r.employeeDeleted && <Badge>삭제된 직원</Badge>}
             <span className="spacer" />
+            {r.noDeduct && <Badge title="이 휴가원의 사용은 잔여에서 빼지 않습니다.">미차감</Badge>}
             {r.status === "active" ? <Badge tone="accent">신청</Badge> : <Badge tone="danger">취소됨</Badge>}
           </div>
 

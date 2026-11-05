@@ -188,6 +188,8 @@ export interface LeaveRequest {
   reason: string;
   emergencyContact: string;
   handoverNote: string;
+  /** 미차감: 이 휴가원의 사용은 잔여에서 빼지 않음 */
+  noDeduct: boolean;
   status: DocStatus;
   cancelledAt: string | null;
   lastPrintedAt: string | null;
