@@ -196,3 +196,29 @@
   line-height: 1.6;
   color: var(--text-faint);
 }
+
+/* 늘 펼쳐 둔 필터 (EmployeeFilterInline): 한 줄에 제목 + 체크 목록 */
+.emp-filter-inline {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+}
+.emp-filter-rows {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.emp-filter-inline .emp-filter-group {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 12px;
+}
+.emp-filter-inline .emp-filter-group > .field-label {
+  flex: none;
+  width: 28px;
+}

@@ -23,11 +23,14 @@ import {
 } from "@leave-flow/shared";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
-import { DateInput, EmployeeSelect, LeaveTypeSelect, PhoneInput, TimeSelect } from "../form/index.tsx";
+import { EmployeeFilterInline, NO_FILTER, filterMatches } from "../form/EmployeeFilter.tsx";
+import { DateInput, LeaveTypeSelect, PhoneInput, TimeSelect } from "../form/index.tsx";
+import { FieldGroup } from "../masters/inputs.tsx";
 import {
   Badge,
   Button,
   Callout,
+  ColorDot,
   ErrorText,
   Field,
   Modal,
@@ -190,7 +193,7 @@ function initialDraft(target: EditorTarget, types: LeaveType[]): Draft {
         endTime: p?.endTime ?? "",
       }),
     ],
-    reason: "",
+    reason: "개인일정",
     emergencyContact: "",
     handoverNote: "",
   };
@@ -218,6 +221,11 @@ function EditorForm({
   const qc = useQueryClient();
   const toast = useToast();
   const confirm = useConfirm();
+  const [filter, setFilter] = useState(NO_FILTER);
+  // 직원을 고르기 전에는 필터에 맞는 직원 모두, 고른 뒤(수정 포함)에는 그 직원만
+  const employeeOptions = draft.employeeId
+    ? employees.filter((e) => e.id === draft.employeeId)
+    : employees.filter((e) => filterMatches(filter, e));
 
   const employee = employees.find((e) => e.id === draft.employeeId) ?? null;
   // 1일 = 그 직원의 하루 근무시간
@@ -481,167 +489,195 @@ function EditorForm({
       }
     >
       <div className="lf-editor">
-        <Field label="직원" required>
-          <EmployeeSelect employees={employees} value={draft.employeeId} onChange={selectEmployee} disabled={!!editing} />
-        </Field>
+        <FieldGroup label="직원" required>
+          {!employee && <EmployeeFilterInline value={filter} onChange={setFilter} />}
+          <div className="lf-emp-grid">
+            {employeeOptions.map((e) => (
+              <button
+                key={e.id}
+                type="button"
+                className="lf-emp-btn"
+                aria-pressed={e.id === draft.employeeId}
+                disabled={!!employee}
+                onClick={() => selectEmployee(e.id)}
+              >
+                <ColorDot color={e.color} />
+                <span className="lf-emp-name">{e.name}</span>
+                {e.department && <span className="faint">{e.department}</span>}
+                {!e.active && <span className="faint">비활성</span>}
+              </button>
+            ))}
+            {employee && !editing && (
+              // 다시 직원 목록으로 (입력한 휴가 항목·사유는 그대로)
+              <Button style={{ justifySelf: "start", alignSelf: "center" }} onClick={() => selectEmployee(null)}>
+                변경
+              </Button>
+            )}
+          </div>
+          {employeeOptions.length === 0 && <span className="muted">필터에 맞는 직원이 없습니다.</span>}
+        </FieldGroup>
         {employee && (
           <div className="lf-emp-meta muted">
             근무 {employee.workDays.map((d) => WEEKDAY_LABELS[d]).join("·")} {employee.workStart}~{employee.workEnd}
           </div>
         )}
 
-        <div>
-          <div className="lf-section-head">
-            <span className="section-title">휴가 항목</span>
-            <span className="spacer" />
-            <Button size="sm" onClick={addItem} disabled={draft.items.length >= MAX_ITEMS}>
-              + 항목 추가
-            </Button>
-          </div>
-          <div className="lf-items">
-            {draft.items.map((it, idx) => {
-              const n = idx + 1;
-              return (
-                <div key={it.key} className="lf-item">
-                  <div className="lf-item-head">
-                    <span className="lf-item-no">{n}</span>
-                    <div className="lf-item-type">
-                      <LeaveTypeSelect
-                        leaveTypes={typeOptions}
-                        labelOf={typeLabel}
-                        value={it.leaveTypeId}
-                        onChange={(v) => setItem(it.key, { leaveTypeId: v })}
-                      />
-                    </div>
-                    <div className="lf-quick" role="group" aria-label={`${n}번째 항목 빠른 선택`}>
-                      {QUICK.map(([range, label]) => {
-                        const q = employee ? quickRangeTimes(employee, range) : null;
-                        const multiDay = isDateString(it.endDate) && it.endDate !== it.startDate;
-                        const halfOnMultiDay = range !== "full" && multiDay;
-                        const on = !!q && !halfOnMultiDay && it.startTime === q.start && it.endTime === q.end;
-                        return (
-                          <button
-                            key={range}
-                            type="button"
-                            aria-pressed={on}
-                            disabled={!employee || !isDateString(it.startDate) || halfOnMultiDay}
-                            title={
-                              !employee
-                                ? "직원을 먼저 선택하세요."
-                                : halfOnMultiDay
-                                  ? "여러 날 항목에는 종일만 쓸 수 있습니다. 반차는 시작일과 종료일을 같게 하세요."
-                                  : undefined
-                            }
-                            onClick={() => applyQuick(it.key, range)}
+        {/* 직원을 고른 뒤에 휴가 입력 */}
+        {employee && (
+          <>
+            <div>
+              <div className="lf-section-head">
+                <span className="section-title">휴가 항목</span>
+                <span className="spacer" />
+                <Button size="sm" onClick={addItem} disabled={draft.items.length >= MAX_ITEMS}>
+                  + 항목 추가
+                </Button>
+              </div>
+              <div className="lf-items">
+                {draft.items.map((it, idx) => {
+                  const n = idx + 1;
+                  return (
+                    <div key={it.key} className="lf-item">
+                      <div className="lf-item-head">
+                        <span className="lf-item-no">{n}</span>
+                        <div className="lf-item-type">
+                          <LeaveTypeSelect
+                            leaveTypes={typeOptions}
+                            labelOf={typeLabel}
+                            value={it.leaveTypeId}
+                            onChange={(v) => setItem(it.key, { leaveTypeId: v })}
+                          />
+                        </div>
+                        <div className="lf-quick" role="group" aria-label={`${n}번째 항목 빠른 선택`}>
+                          {QUICK.map(([range, label]) => {
+                            const q = employee ? quickRangeTimes(employee, range) : null;
+                            const multiDay = isDateString(it.endDate) && it.endDate !== it.startDate;
+                            const halfOnMultiDay = range !== "full" && multiDay;
+                            const on = !!q && !halfOnMultiDay && it.startTime === q.start && it.endTime === q.end;
+                            return (
+                              <button
+                                key={range}
+                                type="button"
+                                aria-pressed={on}
+                                disabled={!employee || !isDateString(it.startDate) || halfOnMultiDay}
+                                title={
+                                  !employee
+                                    ? "직원을 먼저 선택하세요."
+                                    : halfOnMultiDay
+                                      ? "여러 날 항목에는 종일만 쓸 수 있습니다. 반차는 시작일과 종료일을 같게 하세요."
+                                      : undefined
+                                }
+                                onClick={() => applyQuick(it.key, range)}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <span className="spacer" />
+                        {draft.items.length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon
+                            title="항목 삭제"
+                            aria-label={`${n}번째 항목 삭제`}
+                            onClick={() => removeItem(it.key)}
                           >
-                            {label}
-                          </button>
-                        );
-                      })}
+                            ✕
+                          </Button>
+                        )}
+                      </div>
+                      <div className="lf-item-range">
+                        <div className="lf-dt">
+                          <span className="lf-dt-label">시작</span>
+                          <DateInput
+                            value={it.startDate}
+                            ariaLabel={`${n}번째 항목 시작일`}
+                            onChange={(v) =>
+                              setItem(it.key, (cur) => ({
+                                startDate: v,
+                                endDate: cur.endDate === cur.startDate || v > cur.endDate ? v : cur.endDate,
+                              }))
+                            }
+                          />
+                          <TimeSelect
+                            value={it.startTime}
+                            options={times}
+                            disabled={!employee}
+                            ariaLabel={`${n}번째 항목 시작 시각`}
+                            onChange={(v) => setItem(it.key, { startTime: v })}
+                          />
+                          {dateFlag(it.startDate)}
+                        </div>
+                        <span className="lf-tilde">~</span>
+                        <div className="lf-dt">
+                          <span className="lf-dt-label">종료</span>
+                          <DateInput
+                            value={it.endDate}
+                            min={it.startDate || undefined}
+                            ariaLabel={`${n}번째 항목 종료일`}
+                            onChange={(v) => setItem(it.key, { endDate: v })}
+                          />
+                          <TimeSelect
+                            value={it.endTime}
+                            options={times}
+                            disabled={!employee}
+                            ariaLabel={`${n}번째 항목 종료 시각`}
+                            onChange={(v) => setItem(it.key, { endTime: v })}
+                          />
+                          {it.endDate !== it.startDate && dateFlag(it.endDate)}
+                        </div>
+                      </div>
+                      <div className={["lf-item-result", stale && "lf-stale"].filter(Boolean).join(" ")}>
+                        {itemResult(it, idx)}
+                      </div>
                     </div>
-                    <span className="spacer" />
-                    {draft.items.length > 1 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        icon
-                        title="항목 삭제"
-                        aria-label={`${n}번째 항목 삭제`}
-                        onClick={() => removeItem(it.key)}
-                      >
-                        ✕
-                      </Button>
-                    )}
-                  </div>
-                  <div className="lf-item-range">
-                    <div className="lf-dt">
-                      <span className="lf-dt-label">시작</span>
-                      <DateInput
-                        value={it.startDate}
-                        ariaLabel={`${n}번째 항목 시작일`}
-                        onChange={(v) =>
-                          setItem(it.key, (cur) => ({
-                            startDate: v,
-                            endDate: cur.endDate === cur.startDate || v > cur.endDate ? v : cur.endDate,
-                          }))
-                        }
-                      />
-                      <TimeSelect
-                        value={it.startTime}
-                        options={times}
-                        disabled={!employee}
-                        ariaLabel={`${n}번째 항목 시작 시각`}
-                        onChange={(v) => setItem(it.key, { startTime: v })}
-                      />
-                      {dateFlag(it.startDate)}
-                    </div>
-                    <span className="lf-tilde">~</span>
-                    <div className="lf-dt">
-                      <span className="lf-dt-label">종료</span>
-                      <DateInput
-                        value={it.endDate}
-                        min={it.startDate || undefined}
-                        ariaLabel={`${n}번째 항목 종료일`}
-                        onChange={(v) => setItem(it.key, { endDate: v })}
-                      />
-                      <TimeSelect
-                        value={it.endTime}
-                        options={times}
-                        disabled={!employee}
-                        ariaLabel={`${n}번째 항목 종료 시각`}
-                        onChange={(v) => setItem(it.key, { endTime: v })}
-                      />
-                      {it.endDate !== it.startDate && dateFlag(it.endDate)}
-                    </div>
-                  </div>
-                  <div className={["lf-item-result", stale && "lf-stale"].filter(Boolean).join(" ")}>
-                    {itemResult(it, idx)}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                  );
+                })}
+              </div>
+            </div>
 
-        <PreviewPanel
-          hasEmployee={!!employee}
-          preview={preview?.data ?? null}
-          stale={stale}
-          error={previewError}
-          typeById={typeById}
-          dayMinutes={dayMinutesOf(employee)}
-        />
+            <PreviewPanel
+              hasEmployee={!!employee}
+              preview={preview?.data ?? null}
+              stale={stale}
+              error={previewError}
+              typeById={typeById}
+              dayMinutes={dayMinutesOf(employee)}
+            />
 
-        <Field label="휴가사유" required>
-          <TextInput
-            value={draft.reason}
-            maxLength={500}
-            placeholder="예: 개인 사유"
-            onChange={(e) => setDraft((d) => ({ ...d, reason: e.target.value }))}
-          />
-        </Field>
-        <Field label="비상연락처" required hint="직원을 고르면 직원 정보의 비상연락처가 들어갑니다.">
-          <PhoneInput
-            value={draft.emergencyContact}
-            onChange={(v) => setDraft((d) => ({ ...d, emergencyContact: v }))}
-          />
-        </Field>
-        <Field
-          label="업무인계 및 기타사항"
-          hint={
-            estimateHandoverLines(draft.handoverNote) > HANDOVER_HINT_LINES
-              ? "내용이 길어 출력하면 A4 한 장을 넘을 수 있습니다. 출력 화면에서 확인하세요."
-              : undefined
-          }
-        >
-          <Textarea
-            value={draft.handoverNote}
-            maxLength={2000}
-            rows={3}
-            placeholder="해당 사항이 있을 때 적어 주세요."
-            onChange={(e) => setDraft((d) => ({ ...d, handoverNote: e.target.value }))}
-          />
-        </Field>
+            <Field label="휴가사유" required>
+              <TextInput
+                value={draft.reason}
+                maxLength={500}
+                onChange={(e) => setDraft((d) => ({ ...d, reason: e.target.value }))}
+              />
+            </Field>
+            <Field label="비상연락처" required>
+              <PhoneInput
+                value={draft.emergencyContact}
+                onChange={(v) => setDraft((d) => ({ ...d, emergencyContact: v }))}
+              />
+            </Field>
+            <Field
+              label="업무인계 및 기타사항"
+              hint={
+                estimateHandoverLines(draft.handoverNote) > HANDOVER_HINT_LINES
+                  ? "내용이 길어 출력하면 A4 한 장을 넘을 수 있습니다. 출력 화면에서 확인하세요."
+                  : undefined
+              }
+            >
+              <Textarea
+                value={draft.handoverNote}
+                maxLength={2000}
+                rows={3}
+                placeholder="해당 사항이 있을 때 적어 주세요."
+                onChange={(e) => setDraft((d) => ({ ...d, handoverNote: e.target.value }))}
+              />
+            </Field>
+          </>
+        )}
       </div>
     </Modal>
   );

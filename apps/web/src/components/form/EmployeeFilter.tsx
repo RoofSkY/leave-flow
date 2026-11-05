@@ -5,7 +5,7 @@ import { useCategories, useDepartments, useEmployees } from "../../lib/queries.t
 import "./form.css";
 
 /**
- * 직원 필터 (달력·휴가원 목록·잔여 현황·시간외근무). 휴가 종류 적용 대상과 같은 방식:
+ * 직원 필터 (달력·휴가원 목록·휴가원 작성·잔여 현황·시간외근무). 휴가 종류 적용 대상과 같은 방식:
  * 소속·구분은 고른 칸끼리 모두 맞아야(칸 안에서는 하나만), 따로 고른 직원은 조건과 관계없이 더함.
  * 아무것도 고르지 않으면 모두 보임. 소속·구분은 기록 당시가 아니라 직원의 지금 값.
  */
@@ -55,6 +55,17 @@ export function withFilterParams(params: URLSearchParams, f: EmployeeFilterValue
 
 const toggle = <T,>(list: readonly T[], value: T, on: boolean) =>
   on ? [...list.filter((v) => v !== value), value] : list.filter((v) => v !== value);
+
+/** 소속·구분 체크 목록 (고른 값은 목록 순서로) */
+const nameChecks = (names: readonly string[], selected: readonly string[], onPick: (next: string[]) => void) =>
+  names.map((name) => (
+    <Checkbox
+      key={name}
+      label={name}
+      checked={selected.includes(name)}
+      onChange={(on) => onPick(names.filter((n) => toggle(selected, name, on).includes(n)))}
+    />
+  ));
 
 function FilterGroup({ label, empty, children }: { label: string; empty: string; children: ReactNode[] }) {
   return (
@@ -157,36 +168,12 @@ export function EmployeeFilter({
           ) : (
             <>
               <FilterGroup label="소속" empty="등록된 소속이 없습니다.">
-                {departmentNames.map((name) => (
-                  <Checkbox
-                    key={name}
-                    label={name}
-                    checked={value.departments.includes(name)}
-                    onChange={(on) =>
-                      onChange({
-                        ...value,
-                        departments: departmentNames.filter((n) => toggle(value.departments, name, on).includes(n)),
-                      })
-                    }
-                  />
-                ))}
+                {nameChecks(departmentNames, value.departments, (departments) => onChange({ ...value, departments }))}
               </FilterGroup>
               <FilterGroup label="구분" empty="등록된 구분이 없습니다.">
-                {categoryNames.map((name) => (
-                  <Checkbox
-                    key={name}
-                    label={name}
-                    checked={value.categories.includes(name)}
-                    onChange={(on) =>
-                      onChange({
-                        ...value,
-                        categories: categoryNames.filter((n) => toggle(value.categories, name, on).includes(n)),
-                      })
-                    }
-                  />
-                ))}
+                {nameChecks(categoryNames, value.categories, (categories) => onChange({ ...value, categories }))}
               </FilterGroup>
-              <FilterGroup label="직원 (따로 추가)" empty="등록된 직원이 없습니다.">
+              <FilterGroup label="직원" empty="등록된 직원이 없습니다.">
                 {(employeesQ.data ?? []).map((e) => (
                   <Checkbox
                     key={e.id}
@@ -202,15 +189,44 @@ export function EmployeeFilter({
                   />
                 ))}
               </FilterGroup>
-              <p className="emp-filter-hint">
-                소속과 구분을 함께 고르면 둘 다 맞는 직원만 보입니다. 한 칸에서 여러 개를 고르면 그중 하나만 맞으면 되고,
-                따로 고른 직원은 조건과 관계없이 더해집니다. 소속·구분은 직원의 지금 값 기준입니다.
-                {hint && ` ${hint}`}
-              </p>
+              {hint && <p className="emp-filter-hint">{hint}</p>}
             </>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** 늘 펼쳐 둔 필터 (휴가원 작성). 소속·구분만: 직원은 바로 아래 버튼에서 고름 */
+export function EmployeeFilterInline({
+  value,
+  onChange,
+}: {
+  value: EmployeeFilterValue;
+  onChange: (value: EmployeeFilterValue) => void;
+}) {
+  const departmentsQ = useDepartments();
+  const categoriesQ = useCategories();
+  const error = departmentsQ.error ?? categoriesQ.error;
+  if (error) return <ErrorText error={error} />;
+  if (departmentsQ.isPending || categoriesQ.isPending) return <Spinner />;
+  const departmentNames = (departmentsQ.data ?? []).map((d) => d.name);
+  const categoryNames = (categoriesQ.data ?? []).map((c) => c.name);
+
+  return (
+    <div className="emp-filter-inline" role="group" aria-label="직원 필터">
+      <div className="emp-filter-rows">
+        <FilterGroup label="소속" empty="등록된 소속이 없습니다.">
+          {nameChecks(departmentNames, value.departments, (departments) => onChange({ ...value, departments }))}
+        </FilterGroup>
+        <FilterGroup label="구분" empty="등록된 구분이 없습니다.">
+          {nameChecks(categoryNames, value.categories, (categories) => onChange({ ...value, categories }))}
+        </FilterGroup>
+      </div>
+      <Button size="sm" variant="ghost" disabled={countOf(value) === 0} onClick={() => onChange(NO_FILTER)}>
+        모두 해제
+      </Button>
     </div>
   );
 }

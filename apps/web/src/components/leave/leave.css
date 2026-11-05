@@ -82,6 +82,47 @@
   flex-direction: column;
   gap: 16px;
 }
+/* 직원 고르기: 모든 직원을 버튼으로 나열 */
+.lf-emp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+}
+.lf-emp-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.lf-emp-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.lf-emp-btn[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+.lf-emp-btn:disabled {
+  cursor: default;
+}
+.lf-emp-name {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.lf-emp-btn .faint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .lf-emp-meta {
   margin-top: -10px;
   font-size: 12px;
@@ -254,6 +295,14 @@
 }
 .lf-list-filters .select {
   width: auto;
+}
+.lf-list-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.lf-list-range .input {
+  width: 150px;
 }
 .lf-list-count {
   margin-left: auto;

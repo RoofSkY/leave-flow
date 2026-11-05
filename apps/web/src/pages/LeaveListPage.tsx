@@ -1,7 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { addDays, dayMinutesOf, formatLeaveMinutes, formatPeriod, needsReprint, type LeaveRequest } from "@leave-flow/shared";
+import { dayMinutesOf, formatLeaveMinutes, formatPeriod, isDateString, needsReprint, type LeaveRequest } from "@leave-flow/shared";
 import { useRef, useState } from "react";
 import { useSearchParams } from "react-router";
+import { DateInput } from "../components/form/index.tsx";
 import { LeaveDetailModal } from "../components/leave/LeaveDetailModal.tsx";
 import { LeaveEditor, type EditorTarget } from "../components/leave/LeaveEditor.tsx";
 import { requestPeriods, useLeaveRequests, type LeaveListStatus } from "../components/leave/leaveQueries.ts";
@@ -44,15 +45,8 @@ function printMatches(r: LeaveRequest, filter: PrintFilter): boolean {
   return true;
 }
 
-const pad = (n: number) => String(n).padStart(2, "0");
-
-/** 조회 기간: 월을 고르면 그 달, 아니면 그 해 전체 */
-function periodOf(year: number, month: number): { from: string; to: string } {
-  if (!month) return { from: `${year}-01-01`, to: `${year}-12-31` };
-  const from = `${year}-${pad(month)}-01`;
-  const nextMonth = month === 12 ? `${year + 1}-01-01` : `${year}-${pad(month + 1)}-01`;
-  return { from, to: addDays(nextMonth, -1) };
-}
+/** 주소의 날짜(?from=&to=). 없거나 잘못되면 기본값 */
+const dateParam = (value: string | null, fallback: string) => (value && isDateString(value) ? value : fallback);
 
 /** 사용 시간 합계 (1일 = 휴가원에 저장된 근무시간 기준) */
 function totalText(r: LeaveRequest): string {
@@ -63,9 +57,11 @@ function totalText(r: LeaveRequest): string {
 export function LeaveListPage() {
   const [params, setParams] = useSearchParams();
   const thisYear = currentYear();
-  const year = Number(params.get("year")) || thisYear;
-  const monthParam = Number(params.get("month"));
-  const month = Number.isInteger(monthParam) && monthParam >= 1 && monthParam <= 12 ? monthParam : 0;
+  // 조회 기간: 기본은 올해 전체
+  const defaultFrom = `${thisYear}-01-01`;
+  const defaultTo = `${thisYear}-12-31`;
+  const from = dateParam(params.get("from"), defaultFrom);
+  const to = dateParam(params.get("to"), defaultTo);
   const filter = filterFromParams(params);
   const statusParam = params.get("status");
   const status: LeaveListStatus = statusParam === "cancelled" || statusParam === "all" ? statusParam : "active";
@@ -82,7 +78,6 @@ export function LeaveListPage() {
       { replace: true },
     );
 
-  const { from, to } = periodOf(year, month);
   const list = useLeaveRequests({ status, from, to });
   const matches = useEmployeeFilterMatch(filter);
   const qc = useQueryClient();
@@ -95,12 +90,29 @@ export function LeaveListPage() {
     setEditor({ key: ++editorSeq.current, target });
   };
 
-  const years = [...new Set([thisYear + 1, ...Array.from({ length: 6 }, (_, i) => thisYear - i), year])].sort(
-    (a, b) => b - a,
-  );
   const all = list.data ?? [];
   const rows = all.filter((r) => printMatches(r, printFilter) && matches(r.employeeId));
-  const periodLabel = month ? `${year}년 ${month}월` : `${year}년`;
+  // 기간 바꾸기: 시작일이 종료일보다 늦어지면 다른 쪽도 같은 날로. 기본값이면 주소에서 뺌
+  const setPeriod = (nextFrom: string, nextTo: string) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (nextFrom === defaultFrom) next.delete("from");
+        else next.set("from", nextFrom);
+        if (nextTo === defaultTo) next.delete("to");
+        else next.set("to", nextTo);
+        return next;
+      },
+      { replace: true },
+    );
+  const changeFrom = (v: string) => {
+    const f = isDateString(v) ? v : defaultFrom;
+    setPeriod(f, f > to ? f : to);
+  };
+  const changeTo = (v: string) => {
+    const t = isDateString(v) ? v : defaultTo;
+    setPeriod(t < from ? t : from, t);
+  };
 
   return (
     <div className="page">
@@ -115,30 +127,12 @@ export function LeaveListPage() {
       />
 
       <div className="lf-list-filters">
-        <Select
-          value={year}
-          aria-label="연도"
-          onChange={(e) => setParam("year", Number(e.target.value) === thisYear ? null : e.target.value)}
-        >
-          {years.map((y) => (
-            <option key={y} value={y}>
-              {y}년
-            </option>
-          ))}
-        </Select>
-        <Select
-          value={month}
-          aria-label="월"
-          onChange={(e) => setParam("month", e.target.value === "0" ? null : e.target.value)}
-        >
-          <option value={0}>전체 월</option>
-          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-            <option key={m} value={m}>
-              {m}월
-            </option>
-          ))}
-        </Select>
         <EmployeeFilter value={filter} onChange={(f) => setParams((prev) => withFilterParams(prev, f), { replace: true })} />
+        <div className="lf-list-range" role="group" aria-label="조회 기간">
+          <DateInput value={from} onChange={changeFrom} ariaLabel="시작일" />
+          <span className="muted">~</span>
+          <DateInput value={to} min={from} onChange={changeTo} ariaLabel="종료일" />
+        </div>
         <Select
           value={status}
           aria-label="상태"
@@ -170,7 +164,7 @@ export function LeaveListPage() {
       ) : list.error ? (
         <ErrorText error={list.error} />
       ) : rows.length === 0 ? (
-        <EmptyState title={`${periodLabel} 조건에 맞는 휴가원이 없습니다.`} />
+        <EmptyState title="조회 기간에 조건에 맞는 휴가원이 없습니다." />
       ) : (
         <div className="table-wrap">
           <table className="table lf-list">
