@@ -26,7 +26,7 @@ export const BACKOFF_MAX_MS = 60_000;
 /** 이만큼 잘 돌다가 죽었으면 재시작 대기 시간을 처음부터 */
 export const STABLE_MS = 10 * 60_000;
 const LOG_KEEP_DAYS = 30;
-export const DEFAULT_PORT = 8080;
+export const DEFAULT_PORT = 80;
 
 const VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/;
 

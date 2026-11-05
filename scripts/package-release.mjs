@@ -65,7 +65,7 @@ writeFileSync(
   path.join(outDir, "config.example.json"),
   `${JSON.stringify(
     {
-      port: 8080,
+      port: 80,
       nasBackupDir: "\\\\NAS주소\\backup\\leave-flow",
       backupTime: "12:30",
       backupKeepDays: 30,

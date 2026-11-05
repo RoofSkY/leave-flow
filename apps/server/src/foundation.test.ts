@@ -284,11 +284,11 @@ describe("다른 사이트·주소에서 온 API 요청 차단", () => {
       payload: JSON.stringify(workHours),
     });
     expect(res.statusCode).toBe(200);
-    // 개발 중 Vite 프록시 (Host·Origin 모두 localhost:5173)
+    // 개발 중 Vite 프록시 (Host·Origin 모두 localhost:3000)
     const dev = await app.inject({
       method: "PUT",
       url: "/api/settings",
-      headers: { host: "localhost:5173", origin: "http://localhost:5173" },
+      headers: { host: "localhost:3000", origin: "http://localhost:3000" },
       payload: workHours,
     });
     expect(dev.statusCode).toBe(200);

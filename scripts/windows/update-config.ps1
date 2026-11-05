@@ -90,7 +90,7 @@ function Set-Value($name, $value) {
 }
 
 Write-Host "바꾼 값:"
-$oldPort = 8080
+$oldPort = 80
 if ($config.port) { $oldPort = [int]$config.port }
 if ($PSBoundParameters.ContainsKey("Port")) {
   if ($Port -eq 5000) { Fail "5000번 포트는 같은 PC의 auto-ansimtalk 가 사용하므로 쓸 수 없습니다." }

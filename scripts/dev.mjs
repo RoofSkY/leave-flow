@@ -1,9 +1,9 @@
-// 개발용: API 서버(8080)와 화면(5173)을 함께 띄우고, 하나가 꺼지면 나머지도 끈다.
+// 개발용: API 서버(4000)와 화면(3000)을 함께 띄우고, 하나가 꺼지면 나머지도 끈다.
 // 사용: npm run dev  (VS Code Code Runner ▶ 버튼도 이 명령을 실행)
 import { spawn } from "node:child_process";
 import net from "node:net";
 
-const PORT = Number(process.env.LEAVE_FLOW_PORT ?? 8080);
+const PORT = Number(process.env.LEAVE_FLOW_PORT ?? 4000);
 
 function portInUse(port) {
   return new Promise((resolve) => {
@@ -22,7 +22,14 @@ if (await portInUse(PORT)) {
   process.exit(1);
 }
 
-const children = [spawn("npm run dev -w @leave-flow/server", { shell: true, stdio: "inherit" })];
+// 서버 기본 포트(80)가 아니라 개발용 포트로 띄움
+const children = [
+  spawn("npm run dev -w @leave-flow/server", {
+    shell: true,
+    stdio: "inherit",
+    env: { ...process.env, LEAVE_FLOW_PORT: String(PORT) },
+  }),
+];
 
 let stopping = false;
 function stopAll(code) {

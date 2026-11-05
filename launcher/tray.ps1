@@ -34,7 +34,7 @@ function Show-Error($msg) {
 }
 
 # 접속 주소 (config.json 의 port·host. 모든 주소에서 받으면 이 PC의 사무실 IP — 직원들이 쓰는 주소와 같게)
-$port = 8080
+$port = 80
 $hostName = $null
 try {
   $config = Get-Content -Path (Join-Path $InstallDir "config.json") -Raw -Encoding UTF8 | ConvertFrom-Json

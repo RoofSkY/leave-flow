@@ -21,7 +21,7 @@
 param(
   # 없으면 설치되어 있는 폴더(예약 작업 기준), 처음이면 문서\leave-flow
   [string]$InstallDir,
-  [int]$Port = 8080,
+  [int]$Port = 80,
   # leave-flow-<버전>.zip 경로. 없으면 이 스크립트가 있는 압축 해제 폴더 또는 옆의 zip 사용
   [string]$ReleaseZip,
   # 미리 받아 둔 node-v24.x.x-win-x64.zip (없으면 nodejs.org 에서 받음)

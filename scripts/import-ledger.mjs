@@ -4,9 +4,9 @@
 //    node scripts/import-ledger.mjs review --center "<아동센터.xlsx>" --agent "<사회복무요원.xlsx>" --out 검토.xlsx
 // 2) 검토 표를 엑셀로 열어 종류·날짜·시각을 확인하고 고친 뒤, "확인 필요" 칸을 지워 저장
 // 3) 점검 (저장하지 않음)
-//    node scripts/import-ledger.mjs check 검토.xlsx --server http://출결PC주소:8080
+//    node scripts/import-ledger.mjs check 검토.xlsx --server http://출결PC주소
 // 4) 불러오기 (점검을 통과해야 진행, 시작 전에 서버에서 백업을 만듦)
-//    node scripts/import-ledger.mjs import 검토.xlsx --server http://출결PC주소:8080
+//    node scripts/import-ledger.mjs import 검토.xlsx --server http://출결PC주소
 //
 // 직원·휴가 종류는 프로그램에 먼저 등록돼 있어야 한다 (성명, 휴가 종류의 보이는 이름으로 찾음).
 import ExcelJS from "exceljs";
@@ -420,7 +420,7 @@ async function review(options) {
     "· '엑셀 사용량'은 원래 관리대장의 값으로, 점검(check) 때 프로그램이 계산한 사용 시간과 비교합니다.",
     "· '부여' 시트: 사회복무요원 월 특별휴가 부여·시간외근무 발생. 부여 내역으로 들어갑니다.",
     "",
-    "다 고쳤으면 저장하고: node scripts/import-ledger.mjs check <이 파일> --server http://출결PC주소:8080",
+    "다 고쳤으면 저장하고: node scripts/import-ledger.mjs check <이 파일> --server http://출결PC주소",
   ].forEach((line) => guide.addRow([line]));
   guide.getColumn(1).width = 120;
 
@@ -666,7 +666,7 @@ async function importAll(path, server) {
 const { command, options, positional } = parseArgs(process.argv.slice(2));
 if (command === "review") await review(options);
 else if (command === "check" || command === "import") {
-  if (!positional[0] || !options.server) fail(`사용: node scripts/import-ledger.mjs ${command} 검토.xlsx --server http://출결PC주소:8080`);
+  if (!positional[0] || !options.server) fail(`사용: node scripts/import-ledger.mjs ${command} 검토.xlsx --server http://출결PC주소`);
   if (command === "check") process.exit((await check(positional[0], options.server)).ok ? 0 : 1);
   await importAll(positional[0], options.server);
 } else {
