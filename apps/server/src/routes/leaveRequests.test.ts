@@ -768,6 +768,95 @@ describe("휴가원 출력", () => {
   });
 });
 
+describe("휴가원 잔여 = 그 휴가원을 낼 때의 잔여", () => {
+  it("출력·수정 미리보기·경고는 먼저 낸 휴가원만 사용으로 셈 (휴가 날짜가 아닌 낸 순서), 잔여 현황은 전체", async () => {
+    const s = await setup();
+    const day = (date: string, leaveTypeId = s.annual) => [
+      { leaveTypeId, startAt: `${date}T10:00`, endAt: `${date}T19:00` },
+    ];
+    const printed = async (id: number, leaveTypeId = s.annual) =>
+      (await s.app.inject({ url: `/api/leave-requests/${id}/print-data` }))
+        .json<LeavePrintData>()
+        .balanceTable.find((b) => b.leaveTypeId === leaveTypeId);
+    const preview = async (excludeRequestId: number, items: object[]) =>
+      (
+        await s.app.inject({
+          method: "POST",
+          url: "/api/leave-requests/preview",
+          payload: { employeeId: s.emp, excludeRequestId, items },
+        })
+      ).json<LeavePreview>();
+
+    // 11/9, 11/16 순서로 1일씩: 11/9 휴가원에는 11/16 사용이 들어가지 않음
+    const nov9 = (await s.createOk(day("2026-11-09"))).request;
+    const nov16 = (await s.createOk(day("2026-11-16"))).request;
+    expect(await printed(nov9.id)).toMatchObject({ currentMinutes: 480, usedMinutes: 480, remainingMinutes: 15 * 480 - 480 });
+    expect(await printed(nov16.id)).toMatchObject({ currentMinutes: 480, usedMinutes: 960, remainingMinutes: 15 * 480 - 960 });
+
+    // 날짜가 더 이른 휴가를 나중에 내면: 그 휴가원에는 먼저 낸 것까지, 먼저 낸 휴가원은 그대로
+    const nov2 = (await s.createOk(day("2026-11-02"))).request;
+    expect(await printed(nov2.id)).toMatchObject({ usedMinutes: 1440, remainingMinutes: 15 * 480 - 1440 });
+    expect(await printed(nov9.id)).toMatchObject({ usedMinutes: 480 });
+
+    // 수정 미리보기도 출력과 같게: 먼저 낸 휴가원만 (뒤에 낸 휴가원 빼고)
+    const editing = await preview(nov16.id, day("2026-11-16"));
+    expect(editing.balancesBefore.find((b) => b.leaveTypeId === s.annual)?.usedMinutes).toBe(480);
+    expect(editing.balancesAfter.find((b) => b.leaveTypeId === s.annual)?.usedMinutes).toBe(960);
+
+    // 잔여 현황은 지금 전체
+    const balances = (await s.app.inject({ url: `/api/balances?employeeId=${s.emp}&year=2026` })).json<
+      { leaveTypeId: number; usedMinutes: number }[]
+    >();
+    expect(balances.find((b) => b.leaveTypeId === s.annual)?.usedMinutes).toBe(1440);
+
+    // 잔여 초과 경고: 뒤에 낸 휴가원 때문에 앞 휴가원이 부족해지지 않음 (수정·복구도)
+    const special = insertLeaveType(s.db, { name: "특별휴가", sortOrder: 3 });
+    insertGrant(s.db, { employeeId: s.emp, leaveTypeId: special, grantDate: "2026-01-01", minutes: 480 });
+    const first = await s.createOk(day("2026-11-10", special));
+    const second = await s.createOk(day("2026-11-17", special));
+    expect(first.warnings).toEqual([]);
+    expect(second.warnings.map((w) => w.code)).toEqual(["over_balance"]);
+    expect(await printed(first.request.id, special)).toMatchObject({ remainingMinutes: 0 });
+    expect(await printed(second.request.id, special)).toMatchObject({ remainingMinutes: -480 });
+    expect((await preview(first.request.id, day("2026-11-10", special))).warnings).toEqual([]);
+    expect((await s.put(first.request.id, s.body(day("2026-11-10", special)))).json<LeaveSaveResult>().warnings).toEqual(
+      [],
+    );
+    expect(
+      (await s.put(second.request.id, s.body(day("2026-11-17", special)))).json<LeaveSaveResult>().warnings.map((w) => w.code),
+    ).toEqual(["over_balance"]);
+
+    await s.app.inject({ method: "POST", url: `/api/leave-requests/${first.request.id}/cancel` });
+    expect(await printed(second.request.id, special)).toMatchObject({ remainingMinutes: 0 });
+    const restored = await s.app.inject({ method: "POST", url: `/api/leave-requests/${first.request.id}/restore` });
+    expect(restored.json<LeaveSaveResult>().warnings).toEqual([]);
+    expect(await printed(second.request.id, special)).toMatchObject({ remainingMinutes: -480 });
+  });
+
+  it("부여 후 기간(날짜별 경고)·누적(뒤 연도 경고)도 뒤에 낸 휴가원 때문에 앞 휴가원 경고가 생기지 않음", async () => {
+    const s = await setup();
+    const day = (date: string, leaveTypeId: number) => [{ leaveTypeId, startAt: `${date}T10:00`, endAt: `${date}T19:00` }];
+    const codes = (r: { json: <T>() => T }) => r.json<LeaveSaveResult>().warnings.map((w) => w.code);
+
+    // 부여 후 기간: 1일 부여, A(11/10)·B(11/17) 순서로 1일씩 → A는 경고 없음, B는 부족
+    const comp = insertLeaveType(s.db, { name: "보상", sortOrder: 3 });
+    execute(s.db, "UPDATE leave_types SET balance_mode = 'grant_period', valid_months = 6 WHERE id = ?", [comp]);
+    insertGrant(s.db, { employeeId: s.emp, leaveTypeId: comp, grantDate: "2026-11-01", minutes: 480 });
+    const a = await s.createOk(day("2026-11-10", comp));
+    const b = await s.createOk(day("2026-11-17", comp));
+    expect(codes(await s.put(a.request.id, s.body(day("2026-11-10", comp))))).toEqual([]);
+    expect(codes(await s.put(b.request.id, s.body(day("2026-11-17", comp))))).toEqual(["over_balance"]);
+
+    // 누적: 1일 부여, A(2026)·B(2027) 순서로 1일씩 → A 수정 때 2027년 부족 경고 없음
+    const carry = insertLeaveType(s.db, { name: "대체", sortOrder: 4, balanceMode: "cumulative" });
+    insertGrant(s.db, { employeeId: s.emp, leaveTypeId: carry, grantDate: "2026-10-01", minutes: 480 });
+    const c = await s.createOk(day("2026-12-01", carry));
+    const d = await s.createOk(day("2027-01-05", carry));
+    expect(codes(await s.put(c.request.id, s.body(day("2026-12-01", carry))))).toEqual([]);
+    expect(codes(await s.put(d.request.id, s.body(day("2027-01-05", carry))))).toEqual(["over_balance"]);
+  });
+});
+
 describe("적용 대상 직원을 정한 휴가 종류", () => {
   async function restricted() {
     const s = await setup();

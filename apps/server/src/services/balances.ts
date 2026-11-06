@@ -14,6 +14,11 @@ export interface BalanceOptions {
   /** 이 휴가원은 사용량에서 제외 (수정·복구 중인 휴가원의 미리보기·경고) */
   excludeRequestId?: number | null;
   /**
+   * 이 번호까지(포함) 낸 휴가원만 사용량에 넣음 = 그 휴가원을 낼 때의 잔여 (휴가원 미리보기·출력·경고).
+   * 휴가원 번호 = 낸 순서. 뒤에 낸 휴가원이 앞 휴가원의 잔여를 바꾸지 않도록
+   */
+  upToRequestId?: number | null;
+  /**
    * 추가로 더할 사용량 (아직 저장 안 한 신청).
    * 기존 잔여 입력 기준일자 이전 사용을 빼려면 byDate(계산 결과의 날짜별 사용)도 함께 넘길 것.
    */
@@ -74,8 +79,8 @@ export function getEmployeeBalances(
     db,
     `SELECT i.leave_type_id, i.start_at, i.minutes_by_year, i.minutes_by_date
        FROM leave_request_items i JOIN leave_requests r ON r.id = i.request_id
-      WHERE r.employee_id = ? AND r.status = 'active' AND r.no_deduct = 0 AND r.id <> ?`,
-    [employeeId, opts.excludeRequestId ?? -1],
+      WHERE r.employee_id = ? AND r.status = 'active' AND r.no_deduct = 0 AND r.id <> ? AND r.id <= ?`,
+    [employeeId, opts.excludeRequestId ?? -1, opts.upToRequestId ?? Number.MAX_SAFE_INTEGER],
   ).map<BalanceUsage>((r) => {
     const leaveTypeId = toNum(r.leave_type_id);
     const usage: BalanceUsage = {

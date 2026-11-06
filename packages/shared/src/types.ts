@@ -222,7 +222,7 @@ export interface LeavePreview {
   items: LeavePreviewItem[];
   /** 종류별 이번 사용량 */
   totalsByType: { leaveTypeId: number; minutes: number }[];
-  /** 이번 신청을 반영하기 전 잔여 (수정 중이면 그 휴가원 제외) */
+  /** 이번 신청을 반영하기 전 잔여 (수정 중이면 그 휴가원과 그 뒤에 낸 휴가원 제외 = 낼 때의 잔여) */
   balancesBefore: BalanceRow[];
   /** 이번 신청을 반영한 뒤 잔여 */
   balancesAfter: BalanceRow[];
@@ -293,7 +293,7 @@ export interface LeavePrintData {
     /** 차감 안 하는 종류는 null */
     grantedMinutes: number | null;
     currentMinutes: number;
-    /** 누적사용 (금회 포함) */
+    /** 누적사용 (금회 포함, 이 휴가원까지 낸 휴가원만) */
     usedMinutes: number;
     /** 차감 안 하는 종류는 null */
     remainingMinutes: number | null;

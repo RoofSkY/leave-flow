@@ -103,7 +103,7 @@ function extraUsageOf(items: readonly WarningItem[]): BalanceUsage[] {
 /**
  * 잔여 초과를 확인할 연도 (오름차순).
  * - 이번 항목이 사용하는 연도
- * - 누적 종류(소진 포함): 이번에 그 종류를 처음 쓰는 연도보다 뒤에 그 종류 기록(다른 신청 상태 휴가원 사용·부여·기존 잔여)이 있는 연도.
+ * - 누적 종류(소진 포함): 이번에 그 종류를 처음 쓰는 연도보다 뒤에 그 종류 기록(먼저 낸 다른 신청 상태 휴가원 사용·부여·기존 잔여)이 있는 연도.
  *   누적 잔여는 뒤 연도에도 이번 사용분이 들어가므로, 이미 신청해 둔 다음 해 휴가 때문에 그 해 잔여가 음수가 될 수 있음
  */
 function overBalanceYears(
@@ -137,12 +137,12 @@ function overBalanceYears(
       db,
       `SELECT i.leave_type_id, i.minutes_by_year, NULL AS year
          FROM leave_request_items i JOIN leave_requests r ON r.id = i.request_id
-        WHERE r.employee_id = ? AND r.status = 'active' AND r.no_deduct = 0 AND r.id <> ?
+        WHERE r.employee_id = ? AND r.status = 'active' AND r.no_deduct = 0 AND r.id < ?
        UNION ALL
        SELECT leave_type_id, NULL, CAST(substr(grant_date, 1, 4) AS INTEGER) FROM leave_grants WHERE employee_id = ?
        UNION ALL
        SELECT leave_type_id, NULL, year FROM opening_balances WHERE employee_id = ?`,
-      [employeeId, excludeRequestId ?? -1, employeeId, employeeId],
+      [employeeId, excludeRequestId ?? Number.MAX_SAFE_INTEGER, employeeId, employeeId],
     );
     for (const r of records) {
       const from = firstYear.get(Number(r.leave_type_id));
@@ -162,6 +162,7 @@ function overBalanceYears(
 /**
  * 저장은 허용하는 경고: 잔여 초과, 기존 휴가와 겹침, 항목끼리 겹침.
  * items는 아직 사용량에 반영되지 않은 신청 (excludeRequestId 휴가원은 DB 사용량·겹침 검사에서 제외).
+ * 잔여 초과는 excludeRequestId 휴가원보다 먼저 낸 휴가원만 사용량에 넣음 (그 휴가원을 낼 때의 잔여, 미리보기·출력과 같게).
  * 미차감 휴가원(noDeduct)은 잔여를 쓰지 않으므로 잔여 초과는 확인하지 않음.
  */
 export function collectWarnings(
@@ -182,6 +183,7 @@ export function collectWarnings(
   for (const y of years) {
     const rows = getEmployeeBalances(db, employeeId, y, {
       excludeRequestId,
+      upToRequestId: excludeRequestId,
       extraUsage,
       includeInactiveTypes: true,
     });
@@ -223,6 +225,7 @@ export function collectWarnings(
       checked.add(key);
       const dayRows = getEmployeeBalances(db, employeeId, yearOf(date), {
         excludeRequestId,
+        upToRequestId: excludeRequestId,
         extraUsage,
         includeInactiveTypes: true,
         date,
@@ -321,8 +324,10 @@ export function buildPreview(
   const activeTypes = new Set(listLeaveTypes(db).map((t) => t.id));
   const visible = (rows: BalanceRow[]) =>
     rows.filter((r) => activeTypes.has(r.leaveTypeId) || usedTypes.has(r.leaveTypeId));
+  // 수정 중이면 그 휴가원보다 먼저 낸 휴가원만 (출력 양식과 같게)
   const balancesBefore = getEmployeeBalances(db, employeeId, year, {
     excludeRequestId,
+    upToRequestId: excludeRequestId,
     includeInactiveTypes: true,
     date,
     today,
@@ -332,6 +337,7 @@ export function buildPreview(
     ? balancesBefore
     : getEmployeeBalances(db, employeeId, year, {
         excludeRequestId,
+        upToRequestId: excludeRequestId,
         includeInactiveTypes: true,
         extraUsage: extraUsageOf(valid),
         date,
@@ -386,11 +392,14 @@ export function buildPrintData(db: Db, request: LeaveRequest, today: string): Le
   const year = yearOf(date);
   const usedTypes = new Set(request.items.map((i) => i.leaveTypeId));
   // 영구 삭제된 직원도 부여·기존 잔여는 숨겨 보관하므로 휴가현황을 그대로 계산
+  // 사용 = 이 휴가원까지 낸 휴가원 (뒤에 낸 휴가원은 넣지 않음 = 낼 때의 잔여)
   const balances = new Map(
-    getEmployeeBalances(db, request.employeeId, year, { includeInactiveTypes: true, date, today }).map((b) => [
-      b.leaveTypeId,
-      b,
-    ]),
+    getEmployeeBalances(db, request.employeeId, year, {
+      includeInactiveTypes: true,
+      upToRequestId: request.id,
+      date,
+      today,
+    }).map((b) => [b.leaveTypeId, b]),
   );
   // 잔여 행이 없는 종류 = 이 직원에게 적용되지 않고 기록도 없는 종류. 이 휴가원의 종류는 영구 삭제됐어도 이름으로 보임
   // 잔여가 없으면 숨기는 소진 종류도 뺌 (이 휴가원에서 쓴 종류는 보임)
