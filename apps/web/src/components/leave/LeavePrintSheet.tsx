@@ -176,9 +176,9 @@ export function LeavePrintSheet({
               <td className="lf-doc-amount">
                 {b.grantedMinutes !== null && <DocAmount minutes={b.grantedMinutes} dayMinutes={dayMinutes} />}
               </td>
-              {/* 금회사용: 이번에 쓴 종류만 */}
+              {/* 금회사용: 이번에 쓴 종류만 (직접 0으로 입력했으면 0일) */}
               <td className="lf-doc-amount">
-                {b.currentMinutes > 0 && <DocAmount minutes={b.currentMinutes} dayMinutes={dayMinutes} />}
+                {b.currentMinutes !== null && <DocAmount minutes={b.currentMinutes} dayMinutes={dayMinutes} />}
               </td>
               <td className="lf-doc-amount">
                 <DocAmount minutes={b.usedMinutes} dayMinutes={dayMinutes} />

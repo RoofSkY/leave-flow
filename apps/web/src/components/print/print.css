@@ -92,23 +92,31 @@
   letter-spacing: 0.1em;
 }
 
-/* 결재란 테두리: 바깥·결재 칸 오른쪽은 굵게, 직위 줄 아래는 이중선 */
+/*
+ * 결재란 테두리: 바깥·결재 칸 오른쪽은 굵게, 직위 줄 아래는 이중선.
+ * 칸마다 자기 선을 그림 (border-collapse 로 합치면 Chrome 인쇄에서 결재 칸 오른쪽 선이 이중선과 만나는 곳에서 끊김)
+ */
 .approval {
   margin-left: auto;
   margin-bottom: 8mm;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   border: 2px solid #000;
   font-size: 9.5pt;
 }
 .approval td,
 .approval th {
-  border: 1px solid #000;
+  border: 0;
   text-align: center;
   padding: 0;
 }
+.approval th + th,
+.approval td.sign + td.sign {
+  border-left: 1px solid #000;
+}
 .approval .approval-head {
   width: 7mm;
-  border-right-width: 2px;
+  border-right: 2px solid #000;
   line-height: 1.4;
   font-weight: 600;
 }

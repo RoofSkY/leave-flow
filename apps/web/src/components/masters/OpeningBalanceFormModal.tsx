@@ -2,8 +2,12 @@ import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   dayMinutesOf,
+  expirePeriod,
+  expirePeriodYearOf,
+  formatDotDate,
   formatHoursMinutes,
   formatLeaveMinutes,
+  isDateString,
   leaveTypeAppliesTo,
   localToday,
   openingBalanceInput,
@@ -85,9 +89,9 @@ export function OpeningBalanceFormModal({
 
   const employeeOptions = employees.filter((e) => e.active || e.id === opening?.employeeId);
   // 고른 직원에게 적용되는 활성 종류 (수정 중이면 원래 종류)
-  const chosenEmployee = employees.find((e) => e.id === form.employeeId);
+  const employee = employees.find((e) => e.id === form.employeeId);
   const typeOptions = leaveTypes.filter(
-    (t) => t.id === opening?.leaveTypeId || (t.active && (!chosenEmployee || leaveTypeAppliesTo(t, chosenEmployee))),
+    (t) => t.id === opening?.leaveTypeId || (t.active && (!employee || leaveTypeAppliesTo(t, employee))),
   );
   /** 직원을 바꾸면 그 직원에게 적용되지 않는 종류는 선택을 비움 */
   const chooseEmployee = (id: number | null) =>
@@ -97,7 +101,6 @@ export function OpeningBalanceFormModal({
       return { ...f, employeeId: id, leaveTypeId: t && e && !leaveTypeAppliesTo(t, e) ? null : f.leaveTypeId };
     });
   const type = leaveTypes.find((t) => t.id === form.leaveTypeId);
-  const employee = employees.find((e) => e.id === form.employeeId);
 
   // 새로 입력할 때 같은 직원·종류·연도 기록이 이미 있으면 덮어쓰기 안내
   const sameEmployee = useQuery({
@@ -107,6 +110,15 @@ export function OpeningBalanceFormModal({
     enabled: !opening && form.employeeId !== null,
   });
   const existing = opening ? undefined : sameEmployee.data?.find((o) => o.leaveTypeId === form.leaveTypeId);
+  // 정한 날짜 소멸: 기존 잔여는 연도마다 하나라, 덮어쓸 기록이 다른 기간(소멸일 기준)의 것일 수 있음 → 그 기간 잔여도 바뀜
+  const replaced = opening ?? existing;
+  const otherPeriod = (() => {
+    if (!replaced || type?.balanceMode !== "expire_date" || !type.expireMonth || !type.expireDay) return null;
+    if (!isDateString(form.baseDate)) return null;
+    const label = expirePeriodYearOf(replaced.baseDate, type.expireMonth, type.expireDay);
+    if (label === expirePeriodYearOf(form.baseDate, type.expireMonth, type.expireDay)) return null;
+    return expirePeriod(label, type.expireMonth, type.expireDay);
+  })();
 
   // 1일 = 그 직원의 하루 근무시간
   const dayMinutes = dayMinutesOf(employee);
@@ -223,6 +235,11 @@ export function OpeningBalanceFormModal({
         {existing && type && (
           <Callout tone="warning">
             {`이미 입력한 기록이 있습니다 (총 부여 ${f(existing.totalGrantedMinutes)}, 잔여 ${f(existing.remainingMinutes)}). 저장하면 새 값으로 덮어씁니다.`}
+          </Callout>
+        )}
+        {replaced && otherPeriod && (
+          <Callout tone="warning">
+            {`${opening ? "지금" : "덮어쓸"} 기록(기준일자 ${formatDotDate(replaced.baseDate)})은 ${formatDotDate(otherPeriod.start)}~${formatDotDate(otherPeriod.end)} 기간의 기존 잔여입니다. 기준일자가 다른 기간으로 바뀌므로, 저장하면 그 기간의 잔여와 휴가원 양식도 바뀝니다.`}
           </Callout>
         )}
 

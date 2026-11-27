@@ -27,7 +27,7 @@ import {
 import { execute, parseJson, queryAll, queryOne, type Db } from "../db/index.ts";
 import { badRequest } from "../lib/errors.ts";
 import { getEmployeeBalances } from "./balances.ts";
-import { byDateJson, computeItemUsage, withManualMinutes } from "./leaveUsage.ts";
+import { byDateJson, computeItemUsage, parseByDate, withManualMinutes } from "./leaveUsage.ts";
 import { employeeTargetInfo, getEmployee, listLeaveTypes, typeLabelSql } from "./queries.ts";
 
 export const ZERO_MINUTES_MESSAGE = "선택한 기간에 휴가로 계산되는 근무시간이 없습니다.";
@@ -167,10 +167,32 @@ function overBalanceYears(
 }
 
 /**
+ * 부여 후 기간: 먼저 낸(excludeRequestId 보다 앞) 같은 종류 신청·차감 휴가원이 fromYear 보다 뒤 연도에 쓰는 날 (오름차순).
+ * 부여가 해를 넘겨 이어지므로 이번 사용이 그날을 부족하게 만들 수 있음 (그날 잔여는 그 해 말까지만 보므로 따로 확인)
+ */
+function laterUseDates(
+  db: Db,
+  employeeId: number,
+  leaveTypeId: number,
+  fromYear: number,
+  excludeRequestId: number | null,
+): string[] {
+  const rows = queryAll<{ minutes_by_date: string }>(
+    db,
+    `SELECT i.minutes_by_date FROM leave_request_items i JOIN leave_requests r ON r.id = i.request_id
+      WHERE r.employee_id = ? AND r.status = 'active' AND r.no_deduct = 0 AND r.id < ? AND i.leave_type_id = ?`,
+    [employeeId, excludeRequestId ?? Number.MAX_SAFE_INTEGER, leaveTypeId],
+  );
+  const dates = rows.flatMap((r) => parseByDate(r.minutes_by_date).map((d) => d.date)).filter((d) => yearOf(d) > fromYear);
+  return [...new Set(dates)].sort();
+}
+
+/**
  * 저장은 허용하는 경고: 잔여 초과, 기존 휴가와 겹침, 항목끼리 겹침.
  * items는 아직 사용량에 반영되지 않은 신청 (excludeRequestId 휴가원은 DB 사용량·겹침 검사에서 제외).
  * 잔여 초과는 excludeRequestId 휴가원보다 먼저 낸 휴가원만 사용량에 넣음 (그 휴가원을 낼 때의 잔여, 미리보기·출력과 같게).
  * 미차감 휴가원(noDeduct)은 잔여를 쓰지 않으므로 잔여 초과는 확인하지 않음.
+ * @param dayMinutes 경고 문구의 1일(분). 기본: 지금 직원 근무시간 (복구는 휴가원에 저장된 근무시간)
  */
 export function collectWarnings(
   db: Db,
@@ -178,6 +200,7 @@ export function collectWarnings(
   items: readonly WarningItem[],
   excludeRequestId: number | null,
   noDeduct = false,
+  dayMinutes = dayMinutesOf(getEmployee(db, employeeId)),
 ): Warning[] {
   const warnings: Warning[] = [];
   if (items.length === 0) return warnings;
@@ -185,7 +208,6 @@ export function collectWarnings(
   // 잔여 초과: 이번 사용이 들어가는 (종류, 연도)마다 신청 후 잔여가 음수인지
   const years = noDeduct ? [] : overBalanceYears(db, employeeId, items, excludeRequestId);
   const extraUsage = extraUsageOf(items);
-  const dayMinutes = dayMinutesOf(getEmployee(db, employeeId));
   const warned = new Set<string>();
   for (const y of years) {
     const rows = getEmployeeBalances(db, employeeId, y, {
@@ -224,21 +246,33 @@ export function collectWarnings(
       );
   for (const t of dated) {
     const days = [...new Set(items.filter((i) => i.leaveTypeId === t.id).flatMap((i) => i.byDate.map((d) => d.date)))].sort();
+    // 부여 후 기간은 부여가 해를 넘겨 이어지므로, 먼저 낸 휴가원이 뒤 연도에 쓰는 날도 확인 (이번 사용 때문에 부족해질 때만)
+    const laterDays =
+      t.balanceMode === "grant_period" && days.length > 0
+        ? laterUseDates(db, employeeId, t.id, yearOf(days[0]!), excludeRequestId)
+        : [];
     const checked = new Set<string>();
-    for (const date of days) {
+    const rowsAt = (date: string, extra: readonly BalanceUsage[]) =>
+      getEmployeeBalances(db, employeeId, yearOf(date), {
+        excludeRequestId,
+        upToRequestId: excludeRequestId,
+        extraUsage: extra,
+        includeInactiveTypes: true,
+        date,
+      });
+    for (const [date, own] of [...days.map((d) => [d, true] as const), ...laterDays.map((d) => [d, false] as const)]) {
       // 정한 날짜 소멸은 기간마다 한 번, 부여 후 기간 소멸은 쓰는 날마다
       const key = t.balanceMode === "expire_date" ? String(expirePeriodYearOf(date, t.expireMonth ?? 12, t.expireDay ?? 31)) : date;
       if (checked.has(key)) continue;
       checked.add(key);
-      const dayRows = getEmployeeBalances(db, employeeId, yearOf(date), {
-        excludeRequestId,
-        upToRequestId: excludeRequestId,
-        extraUsage,
-        includeInactiveTypes: true,
-        date,
-      });
+      const dayRows = rowsAt(date, extraUsage);
       const row = dayRows.find((r) => r.leaveTypeId === t.id);
       if (!row || row.remainingMinutes === null || row.remainingMinutes >= 0) continue;
+      if (!own) {
+        // 이번 휴가원이 없어도 그만큼 부족한 날은 이번 휴가원과 관계없음
+        const without = rowsAt(date, []).find((r) => r.leaveTypeId === t.id)?.remainingMinutes ?? 0;
+        if (without <= row.remainingMinutes) continue;
+      }
       const when =
         t.balanceMode === "expire_date" && row.periodStart && row.periodEnd
           ? `${formatDotDate(row.periodStart)}~${formatDotDate(row.periodEnd)}`
@@ -289,12 +323,13 @@ export function collectWarnings(
   return warnings;
 }
 
-export function warningItemsOf(evaluated: readonly EvaluatedItem[]): WarningItem[] {
+/** @param nos 화면의 항목 번호 (미리보기에서 덜 채운 항목을 빼고 보낼 때). 없으면 받은 순서대로 1부터 */
+export function warningItemsOf(evaluated: readonly EvaluatedItem[], nos?: readonly number[]): WarningItem[] {
   const out: WarningItem[] = [];
   evaluated.forEach((e, idx) => {
     if (!e.usage) return;
     out.push({
-      no: idx + 1,
+      no: nos?.[idx] ?? idx + 1,
       leaveTypeId: e.input.leaveTypeId,
       startAt: e.input.startAt,
       endAt: e.input.endAt,
@@ -305,7 +340,16 @@ export function warningItemsOf(evaluated: readonly EvaluatedItem[]): WarningItem
   return out;
 }
 
-/** 작성 화면 미리보기. 항목 오류는 던지지 않고 items[i].error 로 */
+/** 잔여 기준일 = 가장 이른 항목의 시작일 (입력 순서와 무관). 항목이 없으면 오늘 */
+function balanceDateOf(items: readonly { startAt: string }[], today: string): string {
+  const first = items.reduce<string | null>((m, i) => (m === null || i.startAt < m ? i.startAt : m), null);
+  return (first ?? today).slice(0, 10);
+}
+
+/**
+ * 작성 화면 미리보기. 항목 오류는 던지지 않고 items[i].error 로
+ * @param itemNos 화면의 항목 번호 (경고 문구에 씀, 덜 채운 항목을 빼고 보낼 때)
+ */
 export function buildPreview(
   db: Db,
   employeeId: number,
@@ -315,9 +359,10 @@ export function buildPreview(
   allowInactive: ReadonlySet<number>,
   today: string,
   noDeduct = false,
+  itemNos?: readonly number[],
 ): LeavePreview {
   const evaluated = evaluateItems(db, employeeId, items, schedule, allowInactive);
-  const valid = warningItemsOf(evaluated);
+  const valid = warningItemsOf(evaluated, itemNos);
 
   const totals = new Map<number, number>();
   for (const e of evaluated) {
@@ -325,7 +370,7 @@ export function buildPreview(
   }
 
   // 잔여 기준일 = 휴가 시작일 (정한 날짜 소멸은 그날이 든 기간, 부여 후 기간 소멸은 그날 쓸 수 있는 양)
-  const date = (items[0]?.startAt ?? today).slice(0, 10);
+  const date = balanceDateOf(items, today);
   const year = yearOf(date);
   const usedTypes = new Set(items.map((i) => i.leaveTypeId));
   const activeTypes = new Set(listLeaveTypes(db).map((t) => t.id));
@@ -359,6 +404,7 @@ export function buildPreview(
       error: e.error,
     })),
     totalsByType: [...totals].map(([leaveTypeId, minutes]) => ({ leaveTypeId, minutes })),
+    year,
     balancesBefore: visible(balancesBefore),
     balancesAfter: visible(balancesAfter),
     warnings: collectWarnings(db, employeeId, valid, excludeRequestId, noDeduct),
@@ -397,15 +443,16 @@ export function describeRequest(r: Pick<LeaveRequest, "employeeName" | "items">,
 /** 출력 데이터 (휴가현황 표·체크박스) */
 export function buildPrintData(db: Db, request: LeaveRequest, today: string): LeavePrintData {
   // 잔여 기준일 = 휴가 시작일
-  const date = (request.items[0]?.startAt ?? today).slice(0, 10);
+  const date = balanceDateOf(request.items, today);
   const year = yearOf(date);
   const usedTypes = new Set(request.items.map((i) => i.leaveTypeId));
   // 영구 삭제된 직원도 부여·기존 잔여는 숨겨 보관하므로 휴가현황을 그대로 계산
-  // 사용 = 이 휴가원까지 낸 휴가원 (뒤에 낸 휴가원은 넣지 않음 = 낼 때의 잔여)
+  // 사용 = 이 휴가원까지 낸 휴가원 (뒤에 낸 휴가원은 넣지 않음 = 낼 때의 잔여), 금회 = 그중 이 휴가원 몫
   const balances = new Map(
     getEmployeeBalances(db, request.employeeId, year, {
       includeInactiveTypes: true,
       upToRequestId: request.id,
+      currentRequestId: request.id,
       date,
       today,
     }).map((b) => [b.leaveTypeId, b]),
@@ -419,13 +466,27 @@ export function buildPrintData(db: Db, request: LeaveRequest, today: string): Le
   );
   // 보이는 이름 (양식 안에서 겹치면 관리 이름으로 구별)
   const label = distinctLeaveTypeLabels(shown);
-  // 미차감 휴가원은 누적사용에 들어가지 않으므로 금회 사용도 0
-  const currentOf = (typeId: number) =>
-    request.noDeduct
-      ? 0
-      : request.items
-          .filter((i) => i.leaveTypeId === typeId)
-          .reduce((sum, i) => sum + (i.minutesByYear[String(year)] ?? 0), 0);
+  // 금회 사용 = 그 줄에 든 이 휴가원 몫 (연도별·누적·소진은 그 연도, 정한 날짜 소멸은 그 기간, 부여 후 기간은
+  // 그날 쓸 수 있는 부여에서 쓴 양 + 부족분). 잔여 행이 없는 종류(영구 삭제)는 이 휴가원의 그 연도 사용분.
+  // 미차감 휴가원은 누적사용에 들어가지 않지만 금회사용에는 이 휴가원의 그 종류 사용 시간을 그대로.
+  // null = 빈칸. 0은 직접 0으로 입력한 항목이 있을 때만 (0일로 적힘)
+  const currentOf = (typeId: number): number | null => {
+    const own = request.items.filter((i) => i.leaveTypeId === typeId);
+    if (request.noDeduct) return own.length ? own.reduce((sum, i) => sum + i.minutes, 0) : null;
+    const minutes =
+      balances.get(typeId)?.currentMinutes ?? own.reduce((sum, i) => sum + (i.minutesByYear[String(year)] ?? 0), 0);
+    if (minutes > 0) return minutes;
+    return own.some((i) => i.manualMinutes === 0) ? 0 : null;
+  };
+  // 영구 삭제된 종류는 부여·기존 잔여가 지워지고 잔여 계산에서 빠짐 → 누적 = 이 휴가원까지 낸 신청·차감 휴가원의 그 연도 사용
+  const deletedTypes = new Set(request.items.filter((i) => i.leaveTypeDeleted).map((i) => i.leaveTypeId));
+  const usedOfDeleted = (typeId: number) =>
+    queryAll<{ minutes_by_year: string }>(
+      db,
+      `SELECT i.minutes_by_year FROM leave_request_items i JOIN leave_requests r ON r.id = i.request_id
+        WHERE r.employee_id = ? AND r.status = 'active' AND r.no_deduct = 0 AND r.id <= ? AND i.leave_type_id = ?`,
+      [request.employeeId, request.id, typeId],
+    ).reduce((sum, r) => sum + (parseJson<Record<string, number>>(r.minutes_by_year, {})[String(year)] ?? 0), 0);
   // 결재칸 = 지금 직원 설정 (영구 삭제된 직원도 행은 남아 있음)
   const employee = queryOne(db, "SELECT approval_roles FROM employees WHERE id = ?", [request.employeeId]);
 
@@ -436,16 +497,18 @@ export function buildPrintData(db: Db, request: LeaveRequest, today: string): Le
     approvalRoles: parseJson<ApprovalRole[]>(employee?.approval_roles, DEFAULT_APPROVAL_ROLES),
     balanceTable: shown.map((t) => {
       const b = balances.get(t.id);
+      const deleted = deletedTypes.has(t.id);
       const granted = b?.grantedMinutes ?? 0;
-      const used = b?.usedMinutes ?? 0;
+      const used = deleted ? usedOfDeleted(t.id) : (b?.usedMinutes ?? 0);
+      // 차감 안 하는 종류(공가 등)·영구 삭제된 종류(부여를 알 수 없음)는 총휴가일·잔여일 빈칸
+      const blank = !t.deducts || deleted;
       return {
         leaveTypeId: t.id,
         name: label(t),
-        // 차감 안 하는 종류(공가 등)는 총휴가일·잔여일 빈칸
-        grantedMinutes: t.deducts ? granted : null,
+        grantedMinutes: blank ? null : granted,
         currentMinutes: currentOf(t.id),
         usedMinutes: used,
-        remainingMinutes: t.deducts ? granted - used : null,
+        remainingMinutes: blank ? null : granted - used,
       };
     }),
     checkboxes: shown.map((t) => ({ leaveTypeId: t.id, name: label(t), checked: usedTypes.has(t.id) })),

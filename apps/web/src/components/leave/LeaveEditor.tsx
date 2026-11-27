@@ -320,6 +320,8 @@ function EditorForm({
         body: {
           employeeId: draft.employeeId,
           items: complete.map((idx) => toInput(draft.items[idx]!)),
+          // 경고 문구(항목끼리 겹침)의 번호를 화면 번호와 맞춤
+          itemNos: complete.map((idx) => idx + 1),
           excludeRequestId: editing?.id ?? null,
           noDeduct: draft.noDeduct,
         },
@@ -774,7 +776,8 @@ function PreviewPanel({
   // 표시 이름 (겹치면 관리 이름)
   const rowLabel = distinctLeaveTypeLabels(preview?.balancesBefore ?? []);
   const labelById = new Map(preview?.balancesBefore.map((b) => [b.leaveTypeId, rowLabel(b)]) ?? []);
-  const year = preview?.balancesBefore[0]?.year;
+  // 잔여 줄의 year 는 정한 날짜 소멸이면 기간 이름이라 서버가 정한 기준 연도를 씀
+  const year = preview?.year;
 
   return (
     <div className="lf-preview">

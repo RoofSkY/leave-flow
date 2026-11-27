@@ -153,6 +153,8 @@ export interface BalanceRow {
   usedMinutes: number;
   /** 차감하지 않는 종류는 null */
   remainingMinutes: number | null;
+  /** 휴가원 출력용: 출력하는 휴가원의 몫 (양식의 금회사용). 그 휴가원을 지정해 계산할 때만 있음 */
+  currentMinutes?: number;
 }
 
 export interface LeaveRequestItem {
@@ -226,6 +228,8 @@ export interface LeavePreview {
   items: LeavePreviewItem[];
   /** 종류별 이번 사용량 */
   totalsByType: { leaveTypeId: number; minutes: number }[];
+  /** 잔여 기준 연도 (가장 이른 항목의 시작 연도, 항목이 없으면 올해) */
+  year: number;
   /** 이번 신청을 반영하기 전 잔여 (수정 중이면 그 휴가원과 그 뒤에 낸 휴가원 제외 = 낼 때의 잔여) */
   balancesBefore: BalanceRow[];
   /** 이번 신청을 반영한 뒤 잔여 */
@@ -286,7 +290,7 @@ export interface LeavePrintData {
   request: LeaveRequest;
   /** 양식 제출일자 (= 출력하는 날짜) */
   submitDate: string;
-  /** 휴가현황 기준 연도 */
+  /** 휴가현황 기준 연도 (가장 이른 항목의 시작 연도) */
   year: number;
   /** 결재칸 (출력할 때의 직원 설정) */
   approvalRoles: ApprovalRole[];
@@ -296,7 +300,11 @@ export interface LeavePrintData {
     name: string;
     /** 차감 안 하는 종류는 null */
     grantedMinutes: number | null;
-    currentMinutes: number;
+    /**
+     * 금회사용 = 그 줄에 든 이 휴가원 몫 (BalanceRow.currentMinutes). 미차감 휴가원은 그 종류 사용 시간 그대로.
+     * null = 빈칸 (이번에 안 쓴 종류). 0 = 직접 0으로 입력한 항목 (0일로 적힘)
+     */
+    currentMinutes: number | null;
     /** 누적사용 (금회 포함, 이 휴가원까지 낸 휴가원만) */
     usedMinutes: number;
     /** 차감 안 하는 종류는 null */

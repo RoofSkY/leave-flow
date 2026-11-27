@@ -1,6 +1,7 @@
 import type { SQLInputValue } from "node:sqlite";
 import {
   addDays,
+  dayMinutesOf,
   editBaseInput,
   formatPeriod,
   leavePreviewInput,
@@ -122,6 +123,7 @@ export function registerLeaveRequestRoutes(app: FastifyInstance, ctx: AppContext
       allowInactive,
       ctx.today(),
       input.noDeduct ?? false,
+      input.itemNos,
     );
   });
 
@@ -322,12 +324,14 @@ export function registerLeaveRequestRoutes(app: FastifyInstance, ctx: AppContext
         },
         now,
       );
+      // 경고 문구의 1일 = 휴가원에 저장된 근무시간 (화면·출력과 같게)
       const warnings = collectWarnings(
         db,
         before.employeeId,
         items.filter((i) => Object.keys(i.minutesByYear).length > 0),
         before.id,
         before.noDeduct,
+        dayMinutesOf(schedule),
       );
       return { request, warnings: [...warnings, ...zeroWarnings] };
     });

@@ -43,6 +43,8 @@ export interface BalanceUsage {
    * - 정한 날짜 소멸·부여 후 기간 소멸: 반드시 필요 (연도가 아닌 기간·날짜로 나누므로)
    */
   byDate?: readonly LeaveDayUsage[];
+  /** 출력하는 휴가원의 사용 → 그 몫을 BalanceRow.currentMinutes(양식의 금회사용)로 셈 */
+  current?: boolean;
 }
 
 export interface BalanceOptions {
@@ -110,6 +112,8 @@ function grantPeriodAsOf(year: number, today: string): string {
 interface TypeTotals {
   granted: number;
   used: number;
+  /** current 사용의 몫 (used 에 든 만큼. 기존 잔여 기준일자까지의 사용은 used 에 없어도 셈) */
+  current: number;
   year: number;
   periodStart: string | null;
   periodEnd: string | null;
@@ -125,6 +129,7 @@ interface TypeTotals {
  * - 기존 잔여 입력이 있으면 기준일자까지(포함)의 부여·사용이 이미 총 부여량·기존 사용량에 들어 있으므로,
  *   같은 연도(정한 날짜 소멸은 같은 기간)의 부여 내역·휴가원 사용은 기준일자 이후 것만 더함
  * 잔여 = 부여 − 사용 (차감하지 않는 종류는 null)
+ * current 사용이 있으면 그 몫을 currentMinutes 로 (휴가원 출력의 금회사용)
  */
 export function computeBalances(
   year: number,
@@ -136,6 +141,7 @@ export function computeBalances(
 ): BalanceRow[] {
   const today = options.today ?? localToday();
   const calendarYear = options.date ? yearOf(options.date) : year;
+  const hasCurrent = usages.some((u) => u.current);
 
   return [...types]
     .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
@@ -148,7 +154,7 @@ export function computeBalances(
         totals = expireDateTotals(t.expireMonth, t.expireDay, options.date, year, typeGrants, typeOpenings, typeUsages);
       } else if (t.balanceMode === "grant_period" && t.validMonths) {
         const asOf = options.date ?? grantPeriodAsOf(year, today);
-        totals = grantPeriodTotals(t.validMonths, asOf, typeGrants, typeOpenings, typeUsages);
+        totals = grantPeriodTotals(t.validMonths, asOf, typeGrants, typeOpenings, typeUsages, options.date !== undefined);
       } else {
         totals = calendarTotals(isCumulativeMode(t.balanceMode), calendarYear, typeGrants, typeOpenings, typeUsages);
       }
@@ -166,6 +172,7 @@ export function computeBalances(
         grantedMinutes: totals.granted,
         usedMinutes: totals.used,
         remainingMinutes: t.deducts ? totals.granted - totals.used : null,
+        ...(hasCurrent ? { currentMinutes: totals.current } : {}),
       };
     });
 }
@@ -183,6 +190,7 @@ function calendarTotals(
   const baseDateOf = (y: number | string) => openings.find((o) => String(o.year) === String(y))?.baseDate;
   let granted = 0;
   let used = 0;
+  let current = 0;
   for (const g of grants) {
     const gy = yearOf(g.grantDate);
     if (!inScope(gy)) continue;
@@ -198,6 +206,7 @@ function calendarTotals(
   for (const u of usages) {
     for (const [y, m] of Object.entries(u.minutesByYear)) {
       if (!inScope(Number(y))) continue;
+      if (u.current) current += m;
       const base = baseDateOf(y);
       if (base === undefined || !u.byDate) {
         used += m;
@@ -212,6 +221,7 @@ function calendarTotals(
   return {
     granted,
     used,
+    current,
     year,
     periodStart: cumulative ? null : `${year}-01-01`,
     periodEnd: `${year}-12-31`,
@@ -232,19 +242,24 @@ function expireDateTotals(
   const label = date ? expirePeriodYearOf(date, month, day) : year;
   const { start, end } = expirePeriod(label, month, day);
   const inPeriod = (d: string) => d >= start && d <= end;
-  const periodOpenings = openings.filter((o) => inPeriod(o.baseDate));
-  const base = periodOpenings.reduce<string | undefined>((b, o) => (b === undefined || o.baseDate > b ? o.baseDate : b), undefined);
+  // 기존 잔여는 연도마다 저장되므로 한 기간에 둘 들 수 있음 → 기준일자가 가장 늦은 것만 (그 시점의 잔여)
+  const opening = openings
+    .filter((o) => inPeriod(o.baseDate))
+    .reduce<BalanceOpening | undefined>((b, o) => (b === undefined || o.baseDate > b.baseDate ? o : b), undefined);
+  const base = opening?.baseDate;
   const counts = (d: string) => inPeriod(d) && (base === undefined || d > base);
 
-  let granted = 0;
-  let used = 0;
-  for (const o of periodOpenings) {
-    granted += o.totalGrantedMinutes;
-    used += o.usedMinutes;
-  }
+  let granted = opening?.totalGrantedMinutes ?? 0;
+  let used = opening?.usedMinutes ?? 0;
+  let current = 0;
   for (const g of grants) if (counts(g.grantDate)) granted += g.minutes;
-  for (const u of usages) for (const d of u.byDate ?? []) if (counts(d.date)) used += d.minutes;
-  return { granted, used, year: label, periodStart: start, periodEnd: end, asOf: null };
+  for (const u of usages) {
+    for (const d of u.byDate ?? []) {
+      if (counts(d.date)) used += d.minutes;
+      if (u.current && inPeriod(d.date)) current += d.minutes;
+    }
+  }
+  return { granted, used, current, year: label, periodStart: start, periodEnd: end, asOf: null };
 }
 
 interface Lot {
@@ -252,13 +267,23 @@ interface Lot {
   expiry: string;
   amount: number;
   consumed: number;
+  /** current 사용이 가져간 양 */
+  currentTaken: number;
+  /** 기존 잔여 입력이면 그 연도 (그 연도 안이면 기준일자 전 날짜에도 쓸 수 있는 부여로 봄) */
+  openingYear?: number;
 }
 
 /**
  * 부여 후 기간 소멸.
  * 부여(기존 잔여 입력은 기준일자에 받은 것으로 봄)마다 쓸 수 있는 기간이 있고, 사용은 그날 쓸 수 있는 부여 중
  * 먼저 소멸하는 것부터 씀. 쓸 수 있는 부여가 모자라면 모자란 만큼 빚으로 두고 다음 부여에서 먼저 갚음.
- * 기준일(asOf)에 쓸 수 있는 부여의 양 = 부여, 그 부여에서 쓴 양(기준일 뒤에 신청해 둔 휴가 포함, 그 해 말까지) + 남은 빚 = 사용.
+ * 기준일(asOf)에 쓸 수 있는 부여의 양 = 부여, 그 부여에서 쓴 양(기준일 뒤에 신청해 둔 휴가 포함, 그 해 말까지) + 빚 = 사용.
+ * 기존 잔여 입력은 그 연도 안이면 기준일자 전 날짜에도 쓸 수 있는 부여로 봄 (연도별처럼 그 연도의 잔여).
+ * 빚 = 기준일까지 쌓인 빚(기준일 뒤 부여에서 갚게 되더라도 기준일에는 남아 있음)
+ *    + 기준일 뒤에 생긴 빚 중 기준일 뒤 부여가 먼저 생긴 것부터 갚고 남은 것.
+ *    휴가 날짜로 볼 때(leaveDate)는 기준일에 쓸 수 있는 부여가 모두 소멸한 뒤 생긴 빚은 넣지 않음 (그날 잔여와 무관, 그 날짜로 볼 때 드러남)
+ * current 몫 = 기준일에 쓸 수 있는 부여에서 current 사용이 가져간 양 + 위 빚 중 current 사용이 만든 것
+ *    + 기존 잔여 기준일자까지의 current 사용
  */
 function grantPeriodTotals(
   validMonths: number,
@@ -266,39 +291,55 @@ function grantPeriodTotals(
   grants: readonly BalanceGrant[],
   openings: readonly BalanceOpening[],
   usages: readonly BalanceUsage[],
+  leaveDate: boolean,
 ): TypeTotals {
   const horizon = `${yearOf(asOf)}-12-31`;
   /** 같은 연도에 기존 잔여 입력이 있으면 그 기준일자까지의 부여·사용은 이미 들어 있음 */
   const covered = (d: string) => openings.some((o) => o.year === yearOf(d) && d <= o.baseDate);
 
   const lots: Lot[] = [];
-  type Event = { date: string; order: number; lot?: Lot; minutes?: number };
+  type Event = { date: string; order: number; lot?: Lot; minutes?: number; current?: boolean };
   const events: Event[] = [];
   for (const o of openings) {
     if (o.baseDate > horizon) continue;
-    const lot = { date: o.baseDate, expiry: grantExpiryDate(o.baseDate, validMonths), amount: o.totalGrantedMinutes, consumed: o.usedMinutes };
+    const lot = { date: o.baseDate, expiry: grantExpiryDate(o.baseDate, validMonths), amount: o.totalGrantedMinutes, consumed: o.usedMinutes, currentTaken: 0, openingYear: o.year };
     events.push({ date: o.baseDate, order: 0, lot });
   }
   for (const g of grants) {
     if (g.grantDate > horizon || covered(g.grantDate)) continue;
-    const lot = { date: g.grantDate, expiry: grantExpiryDate(g.grantDate, validMonths), amount: g.minutes, consumed: 0 };
+    const lot = { date: g.grantDate, expiry: grantExpiryDate(g.grantDate, validMonths), amount: g.minutes, consumed: 0, currentTaken: 0 };
     events.push({ date: g.grantDate, order: 0, lot });
   }
+  /** current 사용 중 기존 잔여 기준일자까지의 것: 기존 사용량에 들어 있어 사용에는 다시 넣지 않지만 금회로는 셈 (연도별과 같게) */
+  let currentCovered = 0;
   for (const u of usages) {
     for (const d of u.byDate ?? []) {
-      if (d.date > horizon || covered(d.date) || d.minutes <= 0) continue;
-      events.push({ date: d.date, order: 1, minutes: d.minutes });
+      if (d.date > horizon || d.minutes <= 0) continue;
+      if (covered(d.date)) {
+        if (u.current) currentCovered += d.minutes;
+        continue;
+      }
+      events.push({ date: d.date, order: 1, minutes: d.minutes, current: u.current });
     }
   }
   // 같은 날은 부여를 먼저
   events.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.order - b.order));
 
   let debt = 0;
+  /** 기준일까지(포함) 쌓인 빚 */
+  let debtAsOf: number | null = null;
+  /** current 사용이 기준일까지 만든 빚 */
+  let currentDebtAsOf = 0;
+  /** 기준일 뒤에 생긴 빚(생긴 순서)과 기준일 뒤 부여가 갚은 양 */
+  const laterDebts: { date: string; minutes: number; current: boolean }[] = [];
+  let laterPaid = 0;
   for (const e of events) {
+    if (debtAsOf === null && e.date > asOf) debtAsOf = debt;
     if (e.lot) {
       const pay = Math.min(debt, e.lot.amount - e.lot.consumed);
       e.lot.consumed += pay;
       debt -= pay;
+      if (e.date > asOf) laterPaid += pay;
       lots.push(e.lot);
       continue;
     }
@@ -310,13 +351,30 @@ function grantPeriodTotals(
       if (need === 0) break;
       const take = Math.min(need, l.amount - l.consumed);
       l.consumed += take;
+      if (e.current) l.currentTaken += take;
       need -= take;
     }
     debt += need;
+    if (e.date > asOf) laterDebts.push({ date: e.date, minutes: need, current: e.current === true });
+    else if (e.current) currentDebtAsOf += need;
   }
 
-  const alive = lots.filter((l) => l.date <= asOf && l.expiry >= asOf);
+  const alive = lots.filter((l) => (l.date <= asOf || l.openingYear === yearOf(asOf)) && l.expiry >= asOf);
   const granted = alive.reduce((s, l) => s + l.amount, 0);
-  const used = alive.reduce((s, l) => s + l.consumed, 0) + debt;
-  return { granted, used, year: yearOf(asOf), periodStart: null, periodEnd: null, asOf };
+  // 기준일 뒤 빚 중 갚고 남은 것 (휴가 날짜로 볼 때는 기준일에 쓸 수 있는 부여의 마지막 소멸일까지 생긴 것만).
+  // 날짜 조건이 없으면 합 = 그 해 말 빚 − 기준일 빚 (0 이상)
+  const lastExpiry = alive.reduce<string | null>((m, l) => (m === null || l.expiry > m ? l.expiry : m), null);
+  let laterUsed = 0;
+  let laterCurrent = 0;
+  let paid = laterPaid;
+  for (const d of laterDebts) {
+    const repaid = Math.min(paid, d.minutes);
+    paid -= repaid;
+    if (leaveDate && (lastExpiry === null || d.date > lastExpiry)) continue;
+    laterUsed += d.minutes - repaid;
+    if (d.current) laterCurrent += d.minutes - repaid;
+  }
+  const used = alive.reduce((s, l) => s + l.consumed, 0) + (debtAsOf ?? debt) + laterUsed;
+  const current = alive.reduce((s, l) => s + l.currentTaken, 0) + currentDebtAsOf + currentCovered + laterCurrent;
+  return { granted, used, current, year: yearOf(asOf), periodStart: null, periodEnd: null, asOf };
 }

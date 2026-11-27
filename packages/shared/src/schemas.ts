@@ -355,6 +355,8 @@ export const leavePreviewInput = z.object({
   excludeRequestId: idSchema.nullable().optional(),
   /** 미차감 휴가원 (신청 후 잔여 = 신청 전 잔여, 잔여 부족 경고 없음) */
   noDeduct: z.boolean().optional(),
+  /** items 각각의 화면 항목 번호(1부터). 덜 채운 항목을 빼고 보낼 때 경고 문구의 번호를 화면과 맞춤. 없으면 받은 순서 */
+  itemNos: z.array(z.number().int().positive()).optional(),
 });
 
 /** 시간외근무 적립 휴가 종류 (신청서에서 대상자마다 고름) */

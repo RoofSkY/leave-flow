@@ -3,7 +3,7 @@ import { needsReprint, type LeavePrintData } from "@leave-flow/shared";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { LeavePrintSheet } from "../../components/leave/LeavePrintSheet.tsx";
-import { leavePrintKey, useLeavePrintData } from "../../components/leave/leaveQueries.ts";
+import { leavePrintKey, requestPeriods, useLeavePrintData } from "../../components/leave/leaveQueries.ts";
 import { PrintShell } from "../../components/print/PrintShell.tsx";
 import { ErrorText, Spinner, useConfirm } from "../../components/ui/index.tsx";
 import { api } from "../../lib/api.ts";
@@ -21,11 +21,11 @@ export function LeavePrintPage() {
   // 글자·간격을 줄여도 A4 한 장을 넘는지 (LeavePrintSheet 가 알려 줌)
   const [overflow, setOverflow] = useState(false);
 
-  // PDF로 저장할 때 파일 이름
+  // PDF로 저장할 때 파일 이름 (날짜 = 가장 이른 휴가기간 시작일, 양식의 첫 휴가기간과 같음)
   useEffect(() => {
     if (!data) return;
     const prev = document.title;
-    document.title = `휴가원_${data.request.employeeName}_${data.request.items[0]?.startAt.slice(0, 10) ?? ""}`;
+    document.title = `휴가원_${data.request.employeeName}_${requestPeriods(data.request)[0]?.startAt.slice(0, 10) ?? ""}`;
     return () => {
       document.title = prev;
     };

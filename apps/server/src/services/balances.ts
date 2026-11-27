@@ -18,6 +18,8 @@ export interface BalanceOptions {
    * 휴가원 번호 = 낸 순서. 뒤에 낸 휴가원이 앞 휴가원의 잔여를 바꾸지 않도록
    */
   upToRequestId?: number | null;
+  /** 이 휴가원의 몫을 BalanceRow.currentMinutes 로 (휴가원 출력의 금회사용) */
+  currentRequestId?: number | null;
   /**
    * 추가로 더할 사용량 (아직 저장 안 한 신청).
    * 기존 잔여 입력 기준일자 이전 사용을 빼려면 byDate(계산 결과의 날짜별 사용)도 함께 넘길 것.
@@ -77,7 +79,7 @@ export function getEmployeeBalances(
   );
   const usages = queryAll(
     db,
-    `SELECT i.leave_type_id, i.start_at, i.minutes_by_year, i.minutes_by_date
+    `SELECT i.request_id, i.leave_type_id, i.start_at, i.minutes_by_year, i.minutes_by_date
        FROM leave_request_items i JOIN leave_requests r ON r.id = i.request_id
       WHERE r.employee_id = ? AND r.status = 'active' AND r.no_deduct = 0 AND r.id <> ? AND r.id <= ?`,
     [employeeId, opts.excludeRequestId ?? -1, opts.upToRequestId ?? Number.MAX_SAFE_INTEGER],
@@ -87,6 +89,7 @@ export function getEmployeeBalances(
       leaveTypeId,
       minutesByYear: parseJson<Record<string, number>>(r.minutes_by_year, {}),
     };
+    if (toNum(r.request_id) === opts.currentRequestId) usage.current = true;
     const base = latestBaseDate.get(leaveTypeId);
     const startAt = String(r.start_at);
     if (byDateTypes.has(leaveTypeId) || (base !== undefined && startAt.slice(0, 10) <= base)) {
@@ -97,10 +100,18 @@ export function getEmployeeBalances(
     return usage;
   });
   // 이 직원에게 적용되지 않는 종류는 기록(부여·기존 잔여·사용)이 있을 때만.
+  // 수정 중인 휴가원(excludeRequestId)은 사용량에서만 빼고 기록으로는 봄. 뒤에 낸 휴가원은 기록으로도 보지 않음 (앞 휴가원 양식이 바뀌지 않게)
   // 영구 삭제된 직원은 대상 목록에서 빠지므로 보관한 대상 행으로 확인
-  const recorded = new Set(
-    [...grants, ...openings, ...usages, ...(opts.extraUsage ?? [])].map((r) => r.leaveTypeId),
-  );
+  const usedTypeIds = queryAll(
+    db,
+    `SELECT DISTINCT i.leave_type_id FROM leave_request_items i JOIN leave_requests r ON r.id = i.request_id
+      WHERE r.employee_id = ? AND r.status = 'active' AND r.no_deduct = 0 AND r.id <= ?`,
+    [employeeId, opts.upToRequestId ?? Number.MAX_SAFE_INTEGER],
+  ).map((r) => toNum(r.leave_type_id));
+  const recorded = new Set([
+    ...[...grants, ...openings, ...(opts.extraUsage ?? [])].map((r) => r.leaveTypeId),
+    ...usedTypeIds,
+  ]);
   const employee = employeeTargetInfo(db, employeeId);
   const targeted = new Set(
     queryAll(db, "SELECT leave_type_id FROM leave_type_employees WHERE employee_id = ?", [employeeId]).map((r) =>

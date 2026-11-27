@@ -1,4 +1,11 @@
-import { needsReprint, type LeavePreview, type LeavePrintData, type LeaveRequest, type LeaveSaveResult } from "@leave-flow/shared";
+import {
+  needsReprint,
+  type BalanceRow,
+  type LeavePreview,
+  type LeavePrintData,
+  type LeaveRequest,
+  type LeaveSaveResult,
+} from "@leave-flow/shared";
 import { describe, expect, it } from "vitest";
 import { execute, queryAll, queryOne } from "../db/index.ts";
 import { ZERO_MINUTES_MESSAGE } from "../services/leaveRequests.ts";
@@ -148,6 +155,10 @@ describe("휴가원 작성", () => {
     const zero = { leaveTypeId: s.annual, startAt: "2026-10-07T10:00", endAt: "2026-10-07T19:00", manualMinutes: 0 };
     const { request: none } = await s.createOk([zero as typeof item]);
     expect(none.items[0]).toMatchObject({ minutes: 0, manualMinutes: 0, minutesByYear: {} });
+    // 출력의 금회사용은 0일(빈칸 아님), 안 쓴 종류는 빈칸
+    const print = (await s.app.inject({ url: `/api/leave-requests/${none.id}/print-data` })).json<LeavePrintData>();
+    expect(print.balanceTable.find((b) => b.leaveTypeId === s.annual)?.currentMinutes).toBe(0);
+    expect(print.balanceTable.find((b) => b.leaveTypeId === s.sick)?.currentMinutes).toBeNull();
 
     const bad = await s.create([{ ...item, manualMinutes: 15 } as typeof item]);
     expect(bad.statusCode).toBe(400);
@@ -557,7 +568,33 @@ describe("휴가원 취소·복구", () => {
   });
 });
 
+describe("휴가원 취소·복구: 경고", () => {
+  it("복구 경고의 일수는 휴가원에 저장된 근무시간 기준 (그 사이 직원 근무시간이 바뀌어도)", async () => {
+    const s = await setup();
+    const { request } = await s.createOk([{ leaveTypeId: s.sick, startAt: "2026-11-10T10:00", endAt: "2026-11-10T19:00" }]);
+    await s.app.inject({ method: "POST", url: `/api/leave-requests/${request.id}/cancel` });
+    execute(s.db, "UPDATE employees SET work_start = '13:00', work_end = '18:00' WHERE id = ?", [s.emp]);
+    const res = await s.app.inject({ method: "POST", url: `/api/leave-requests/${request.id}/restore` });
+    expect(res.json<LeaveSaveResult>().warnings.map((w) => w.message)).toEqual([
+      "병가 잔여가 부족합니다. (2026년 신청 후 잔여 -1일)",
+    ]);
+  });
+});
+
 describe("휴가원 미리보기", () => {
+  it("항목끼리 겹침 경고의 번호는 화면 번호(itemNos)를 따름 (덜 채운 항목을 빼고 보낼 때)", async () => {
+    const s = await setup();
+    const item = { leaveTypeId: s.annual, startAt: "2026-11-10T10:00", endAt: "2026-11-10T19:00" };
+    const res = await s.app.inject({
+      method: "POST",
+      url: "/api/leave-requests/preview",
+      payload: { employeeId: s.emp, items: [item, item], itemNos: [2, 3] },
+    });
+    expect(res.json<LeavePreview>().warnings.find((w) => w.code === "overlap_items")?.message).toBe(
+      "2번째와 3번째 휴가 항목의 기간이 겹칩니다.",
+    );
+  });
+
   it("정한 날짜 소멸·부여 후 기간: 휴가 시작일 기준으로 잔여를 보고, 사라진 양은 쓸 수 없어 경고", async () => {
     const s = await setup();
     const fiscal = insertLeaveType(s.db, { name: "특별", sortOrder: 3 });
@@ -774,7 +811,7 @@ describe("휴가원 출력", () => {
         leaveTypeId: substitute,
         name: "대체휴가",
         grantedMinutes: 1500,
-        currentMinutes: 0,
+        currentMinutes: null,
         usedMinutes: 0,
         remainingMinutes: 1500,
       },
@@ -842,6 +879,164 @@ describe("휴가원 출력", () => {
     expect((await s.app.inject({ url: `/api/leave-requests/${request.id}/print-data` })).statusCode).toBe(409);
     expect((await s.app.inject({ url: "/api/leave-requests/999/print-data" })).statusCode).toBe(404);
     expect(queryAll(s.db, "SELECT * FROM print_logs")).toHaveLength(1);
+  });
+
+  it("미리보기·출력의 기준일은 입력 순서와 관계없이 가장 이른 항목의 시작일", async () => {
+    const s = await setup();
+    insertGrant(s.db, { employeeId: s.emp, leaveTypeId: s.annual, grantDate: "2027-01-01", minutes: 15 * 480 });
+    const items = [
+      { leaveTypeId: s.annual, startAt: "2027-01-05T10:00", endAt: "2027-01-05T19:00" },
+      { leaveTypeId: s.annual, startAt: "2026-12-28T10:00", endAt: "2026-12-28T19:00" },
+    ];
+    const preview = await s.app.inject({
+      method: "POST",
+      url: "/api/leave-requests/preview",
+      payload: { employeeId: s.emp, items },
+    });
+    expect(preview.json<LeavePreview>().year).toBe(2026);
+    expect(preview.json<LeavePreview>().balancesBefore.find((b) => b.leaveTypeId === s.annual)).toMatchObject({ year: 2026 });
+
+    const { request } = await s.createOk(items);
+    expect(request.items.map((i) => i.startAt)).toEqual(["2027-01-05T10:00", "2026-12-28T10:00"]); // 저장은 입력 순서
+    const data = (await s.app.inject({ url: `/api/leave-requests/${request.id}/print-data` })).json<LeavePrintData>();
+    expect(data.year).toBe(2026);
+    expect(data.balanceTable.find((b) => b.leaveTypeId === s.annual)).toMatchObject({
+      grantedMinutes: 7200,
+      currentMinutes: 480,
+      usedMinutes: 480,
+      remainingMinutes: 6720,
+    });
+  });
+
+  it("정한 날짜 소멸·부여 후 기간: 금회사용 = 그 줄 누적사용에 든 이 휴가원 몫 (기간·부여 경계를 걸쳐도 금회 ≤ 누적)", async () => {
+    const s = await setup();
+    const fiscal = insertLeaveType(s.db, { name: "특별", sortOrder: 3 });
+    const comp = insertLeaveType(s.db, { name: "보상", sortOrder: 4 });
+    execute(s.db, "UPDATE leave_types SET balance_mode = 'expire_date', expire_month = 2, expire_day = 28 WHERE id = ?", [fiscal]);
+    execute(s.db, "UPDATE leave_types SET balance_mode = 'grant_period', valid_months = 6 WHERE id = ?", [comp]);
+    // 특별: 기간 = 3/1~다음 해 2/28. 보상: 3/1 부여는 8/31까지, 9/1 부여는 그 뒤
+    for (const grantDate of ["2026-03-01", "2027-03-01"]) {
+      insertGrant(s.db, { employeeId: s.emp, leaveTypeId: fiscal, grantDate, minutes: 15 * 480 });
+    }
+    for (const grantDate of ["2026-03-01", "2026-09-01"]) {
+      insertGrant(s.db, { employeeId: s.emp, leaveTypeId: comp, grantDate, minutes: 5 * 480 });
+    }
+    const printedRow = async (leaveTypeId: number, startAt: string, endAt: string) => {
+      const { request } = await s.createOk([{ leaveTypeId, startAt, endAt }]);
+      return (await s.app.inject({ url: `/api/leave-requests/${request.id}/print-data` }))
+        .json<LeavePrintData>()
+        .balanceTable.find((b) => b.leaveTypeId === leaveTypeId);
+    };
+
+    // 해를 넘겨도 같은 기간(2026 기간)이면 5일 모두 금회
+    expect(await printedRow(fiscal, "2026-12-30T10:00", "2027-01-05T19:00")).toMatchObject({
+      grantedMinutes: 7200,
+      currentMinutes: 2400,
+      usedMinutes: 2400,
+      remainingMinutes: 4800,
+    });
+    // 기간 경계(2/28)를 걸치면 이 기간 몫(2/25·2/26)만 금회
+    expect(await printedRow(fiscal, "2027-02-25T10:00", "2027-03-03T19:00")).toMatchObject({
+      currentMinutes: 960,
+      usedMinutes: 2400 + 960,
+      remainingMinutes: 7200 - 3360,
+    });
+    // 부여 경계: 8/27~9/3 중 3/1 부여(8/31까지)에서 쓴 3일만 금회, 9/1부터는 9/1 부여에서 씀
+    expect(await printedRow(comp, "2026-08-27T10:00", "2026-09-03T19:00")).toMatchObject({
+      grantedMinutes: 2400,
+      currentMinutes: 1440,
+      usedMinutes: 1440,
+      remainingMinutes: 960,
+    });
+  });
+
+  it("금회사용은 그 휴가원 몫: 날짜가 이른 휴가원을 나중에 내도(부여 후 기간), 기존 잔여 기준일자 이전이어도(정한 날짜 소멸)", async () => {
+    const s = await setup();
+    const comp = insertLeaveType(s.db, { name: "보상", sortOrder: 3 });
+    const fiscal = insertLeaveType(s.db, { name: "특별", sortOrder: 4 });
+    execute(s.db, "UPDATE leave_types SET balance_mode = 'grant_period', valid_months = 6 WHERE id = ?", [comp]);
+    execute(s.db, "UPDATE leave_types SET balance_mode = 'expire_date', expire_month = 2, expire_day = 28 WHERE id = ?", [fiscal]);
+    const row = async (id: number, leaveTypeId: number) =>
+      (await s.app.inject({ url: `/api/leave-requests/${id}/print-data` }))
+        .json<LeavePrintData>()
+        .balanceTable.find((b) => b.leaveTypeId === leaveTypeId);
+
+    // 보상: 10/1 2일, 11/5 3일. 11/9 → 11/16 → 11/2 순서로 1일씩 → 11/2는 10/1 부여에서 1일을 씀 (11/16은 11/5 부여로 밀림)
+    insertGrant(s.db, { employeeId: s.emp, leaveTypeId: comp, grantDate: "2026-10-01", minutes: 960 });
+    insertGrant(s.db, { employeeId: s.emp, leaveTypeId: comp, grantDate: "2026-11-05", minutes: 1440 });
+    for (const date of ["2026-11-09", "2026-11-16"]) {
+      await s.createOk([{ leaveTypeId: comp, startAt: `${date}T10:00`, endAt: `${date}T19:00` }]);
+    }
+    const nov2 = await s.createOk([{ leaveTypeId: comp, startAt: "2026-11-02T10:00", endAt: "2026-11-02T19:00" }]);
+    expect(await row(nov2.request.id, comp)).toMatchObject({
+      grantedMinutes: 960,
+      currentMinutes: 480,
+      usedMinutes: 960,
+      remainingMinutes: 0,
+    });
+
+    // 기존 잔여(기준일자 5/31)보다 앞선 4/9·4/10 휴가: 누적은 기존 사용량 그대로, 금회는 연도별·정한 날짜 소멸 모두 1일
+    for (const leaveTypeId of [s.annual, fiscal]) {
+      execute(
+        s.db,
+        `INSERT INTO opening_balances (employee_id, leave_type_id, year, base_date, total_granted_minutes, remaining_minutes,
+           used_minutes, created_at, updated_at) VALUES (?, ?, 2026, '2026-05-31', 7200, 5280, 1920, 'x', 'x')`,
+        [s.emp, leaveTypeId],
+      );
+    }
+    const april = await s.createOk([
+      { leaveTypeId: s.annual, startAt: "2026-04-09T10:00", endAt: "2026-04-09T19:00" },
+      { leaveTypeId: fiscal, startAt: "2026-04-10T10:00", endAt: "2026-04-10T19:00" },
+    ]);
+    const expected = { grantedMinutes: 7200, currentMinutes: 480, usedMinutes: 1920, remainingMinutes: 5280 };
+    expect(await row(april.request.id, s.annual)).toMatchObject(expected);
+    expect(await row(april.request.id, fiscal)).toMatchObject(expected);
+  });
+
+  it("영구 삭제한 휴가 종류: 총휴가일·잔여일은 빈칸, 누적사용 = 이 휴가원까지 낸 사용 (금회 ≤ 누적)", async () => {
+    const s = await setup();
+    insertGrant(s.db, { employeeId: s.emp, leaveTypeId: s.sick, grantDate: "2026-01-01", minutes: 1440 });
+    const day = (date: string) => [{ leaveTypeId: s.sick, startAt: `${date}T10:00`, endAt: `${date}T19:00` }];
+    const first = await s.createOk(day("2026-10-26"));
+    const second = await s.createOk(day("2026-10-27"));
+    expect((await s.app.inject({ method: "POST", url: `/api/leave-types/${s.sick}/deactivate` })).statusCode).toBe(200);
+    const purge = await s.app.inject({
+      method: "POST",
+      url: `/api/leave-types/${s.sick}/delete`,
+      payload: { confirmName: "병가" },
+    });
+    expect(purge.statusCode).toBe(204);
+    const row = async (id: number) =>
+      (await s.app.inject({ url: `/api/leave-requests/${id}/print-data` }))
+        .json<LeavePrintData>()
+        .balanceTable.find((b) => b.leaveTypeId === s.sick);
+    expect(await row(first.request.id)).toMatchObject({
+      grantedMinutes: null,
+      currentMinutes: 480,
+      usedMinutes: 480,
+      remainingMinutes: null,
+    });
+    expect(await row(second.request.id)).toMatchObject({ currentMinutes: 480, usedMinutes: 960 });
+  });
+
+  it("부여 후 기간: 휴가 날짜 뒤에 받는 같은 해 부여로 갚을 양도 그날은 부족 (경고·출력)", async () => {
+    const s = await setup();
+    const comp = insertLeaveType(s.db, { name: "보상", sortOrder: 3 });
+    execute(s.db, "UPDATE leave_types SET balance_mode = 'grant_period', valid_months = 6 WHERE id = ?", [comp]);
+    // 9/1 5시간, 12/1 1일 부여. 11/10 하루를 쓰면 그날 쓸 수 있는 5시간보다 3시간 모자람
+    insertGrant(s.db, { employeeId: s.emp, leaveTypeId: comp, grantDate: "2026-09-01", minutes: 300 });
+    insertGrant(s.db, { employeeId: s.emp, leaveTypeId: comp, grantDate: "2026-12-01", minutes: 480 });
+    const { request, warnings } = await s.createOk([
+      { leaveTypeId: comp, startAt: "2026-11-10T10:00", endAt: "2026-11-10T19:00" },
+    ]);
+    expect(warnings.map((w) => w.message)).toEqual(["보상 잔여가 부족합니다. (2026.11.10. 기준 신청 후 잔여 -3시간)"]);
+    const data = (await s.app.inject({ url: `/api/leave-requests/${request.id}/print-data` })).json<LeavePrintData>();
+    expect(data.balanceTable.find((b) => b.leaveTypeId === comp)).toMatchObject({
+      grantedMinutes: 300,
+      currentMinutes: 480,
+      usedMinutes: 480,
+      remainingMinutes: -180,
+    });
   });
 });
 
@@ -934,6 +1129,56 @@ describe("휴가원 잔여 = 그 휴가원을 낼 때의 잔여", () => {
   });
 });
 
+describe("부여 후 기간 잔여 초과 경고", () => {
+  async function compSetup() {
+    const s = await setup();
+    const comp = insertLeaveType(s.db, { name: "보상", sortOrder: 3 });
+    execute(s.db, "UPDATE leave_types SET balance_mode = 'grant_period', valid_months = 6 WHERE id = ?", [comp]);
+    const day = (date: string) => [{ leaveTypeId: comp, startAt: `${date}T10:00`, endAt: `${date}T19:00` }];
+    const messages = (r: LeaveSaveResult) => r.warnings.map((w) => w.message);
+    return { ...s, comp, day, messages };
+  }
+
+  it("먼저 낸 다음 해 휴가원이 쓸 부여를 가져가면 경고 (이미 부족하던 날은 경고 안 함)", async () => {
+    // 11/1 1일 부여 (2027-04-30까지). 2027-02-01을 먼저 내고 2026-11-20을 나중에 냄
+    const s = await compSetup();
+    insertGrant(s.db, { employeeId: s.emp, leaveTypeId: s.comp, grantDate: "2026-11-01", minutes: 480 });
+    expect(s.messages(await s.createOk(s.day("2027-02-01")))).toEqual([]);
+    expect(s.messages(await s.createOk(s.day("2026-11-20")))).toEqual([
+      "보상 잔여가 부족합니다. (2027.02.01. 기준 신청 후 잔여 -1일)",
+    ]);
+
+    // 부여가 소멸한 뒤(2027-06-01)의 휴가원은 이번 휴가원과 관계없이 부족 → 이번 휴가원에는 경고 없음
+    const t = await compSetup();
+    insertGrant(t.db, { employeeId: t.emp, leaveTypeId: t.comp, grantDate: "2026-11-01", minutes: 480 });
+    expect(t.messages(await t.createOk(t.day("2027-06-01")))).toEqual([
+      "보상 잔여가 부족합니다. (2027.06.01. 기준 신청 후 잔여 -1일)",
+    ]);
+    expect(t.messages(await t.createOk(t.day("2026-11-20")))).toEqual([]);
+  });
+
+  it("그날 쓸 수 있는 부여가 소멸한 뒤 생기는 다른 휴가원의 부족은 이번 휴가원 경고·출력에 넣지 않음 (잔여 현황은 미리 뺌)", async () => {
+    const s = await compSetup();
+    // 6/1 1일 부여 (11/30까지). 12/21(먼저 냄)은 쓸 부여가 없어 부족, 11/10(나중에 냄)은 6/1 부여를 씀
+    insertGrant(s.db, { employeeId: s.emp, leaveTypeId: s.comp, grantDate: "2026-06-01", minutes: 480 });
+    expect(s.messages(await s.createOk(s.day("2026-12-21")))).toEqual([
+      "보상 잔여가 부족합니다. (2026.12.21. 기준 신청 후 잔여 -1일)",
+    ]);
+    const nov10 = await s.createOk(s.day("2026-11-10"));
+    expect(nov10.warnings).toEqual([]);
+    const data = (await s.app.inject({ url: `/api/leave-requests/${nov10.request.id}/print-data` })).json<LeavePrintData>();
+    expect(data.balanceTable.find((b) => b.leaveTypeId === s.comp)).toMatchObject({
+      grantedMinutes: 480,
+      currentMinutes: 480,
+      usedMinutes: 480,
+      remainingMinutes: 0,
+    });
+    // 잔여 현황(오늘 10/19)은 그 해 말까지 생길 부족을 미리 뺌
+    const balances = (await s.app.inject({ url: `/api/balances?employeeId=${s.emp}&year=2026` })).json<BalanceRow[]>();
+    expect(balances.find((b) => b.leaveTypeId === s.comp)).toMatchObject({ remainingMinutes: -480 });
+  });
+});
+
 describe("적용 대상 직원을 정한 휴가 종류", () => {
   async function restricted() {
     const s = await setup();
@@ -979,6 +1224,13 @@ describe("적용 대상 직원을 정한 휴가 종류", () => {
     execute(s.db, "DELETE FROM leave_type_employees");
     execute(s.db, "INSERT INTO leave_type_employees (leave_type_id, employee_id) VALUES (?, ?)", [s.special, s.emp]);
     expect(await s.balanceNames(s.other)).toContain("특별휴가");
+    // 수정 미리보기의 신청 전 잔여에도 보임 (수정 중인 휴가원이 그 기록)
+    const preview = await s.app.inject({
+      method: "POST",
+      url: "/api/leave-requests/preview",
+      payload: { employeeId: s.other, excludeRequestId: id, items: [s.item] },
+    });
+    expect(preview.json<LeavePreview>().balancesBefore.map((b) => b.name)).toContain("특별휴가");
     const put = await s.put(id, {
       ...s.body([{ ...s.item, startAt: "2026-10-27T10:00", endAt: "2026-10-27T19:00" }]),
       employeeId: s.other,
@@ -1147,9 +1399,9 @@ describe("미차감 휴가원", () => {
     expect(warnings).toEqual([]);
     expect(await used()).toBe(0);
 
-    // 출력: 금회·누적 사용에 넣지 않음 (체크박스는 그대로)
+    // 출력: 누적 사용에 넣지 않음, 금회사용은 사용 시간 그대로 (체크박스는 그대로)
     const print = (await s.app.inject({ url: `/api/leave-requests/${request.id}/print-data` })).json<LeavePrintData>();
-    expect(print.balanceTable.find((b) => b.leaveTypeId === s.sick)).toMatchObject({ currentMinutes: 0, usedMinutes: 0 });
+    expect(print.balanceTable.find((b) => b.leaveTypeId === s.sick)).toMatchObject({ currentMinutes: 480, usedMinutes: 0 });
     expect(print.checkboxes.find((c) => c.leaveTypeId === s.sick)?.checked).toBe(true);
 
     // 수정으로 미차감을 끄면 차감 + 잔여 부족 경고, 값을 빼고 보내면 미차감 아님
