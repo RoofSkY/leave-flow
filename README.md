@@ -11,10 +11,6 @@
 
 ## Documentation
 
-- [Introduction](docs/index.md)
-- [Getting Started](docs/getting-started/index.md)
-- 일반 - [실행과 트레이](docs/general/running.md), [접속 주소와 네트워크](docs/general/network.md), [영구 삭제](docs/general/deletion.md)
-- [설정 파일](docs/configuration/index.md)
-- [백업](docs/backup/index.md) - [NAS 백업](docs/backup/nas.md), [복구](docs/backup/restore.md)
-- [문제 해결](docs/troubleshooting/index.md)
-- [개발자](docs/developers/index.md) - [배포 구조와 자동 업데이트](docs/developers/architecture.md), [새 버전 배포](docs/developers/publishing.md), [API](docs/developers/api/index.md)
+- [소개](docs/index.md)
+- [설치](docs/install.md) · [운영](docs/operation.md) · [백업과 복구](docs/backup.md) · [설정 파일](docs/configuration.md) · [문제 해결](docs/troubleshooting.md)
+- [개발](docs/developers.md) · [API](docs/api.md)
