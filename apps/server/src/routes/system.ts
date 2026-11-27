@@ -8,7 +8,7 @@ import { transaction } from "../db/index.ts";
 import { badRequest } from "../lib/errors.ts";
 import { clientIp, parseInput } from "../lib/http.ts";
 import { writeAudit } from "../services/audit.ts";
-import { checkWritableDir, createBackup, listBackups, prepareRestore } from "../services/backup.ts";
+import { checkWritableDir, createBackup, listBackups, prepareRestore, prepareUploadRestore } from "../services/backup.ts";
 import { buildExportWorkbook, buildTableWorkbook } from "../services/excelExport.ts";
 import { SYSTEM_KEYS, getValue, setValue } from "../services/settings.ts";
 import {
@@ -20,6 +20,10 @@ import {
 
 /** 백업 복구 종료 코드 (launcher 가 그냥 재시작) */
 const EXIT_RESTORE = 76;
+
+/** 화면에서 고른 DB 파일로 복구: 파일 내용을 그대로(application/octet-stream) 받는 경로와 최대 크기 */
+export const UPLOAD_RESTORE_PATH = "/api/backups/upload";
+const UPLOAD_LIMIT_BYTES = 500 * 1024 * 1024;
 
 const restoreInput = z.object({
   name: z.string({ error: "복구할 백업을 선택하세요." }).min(1, "복구할 백업을 선택하세요.").max(200),
@@ -110,6 +114,22 @@ export function registerSystemRoutes(
     await prepareRestore(ctx, input.name, input.location, clientIp(req));
     requestExit(EXIT_RESTORE);
     return { message: "백업으로 복구합니다. 서버가 잠시 재시작됩니다." };
+  });
+
+  // 화면에서 고른 DB 파일로 복구. 본문 = 파일 내용, ?name= 원래 파일 이름 (변경 이력용)
+  app.register(async (scope) => {
+    scope.addContentTypeParser(
+      "application/octet-stream",
+      { parseAs: "buffer", bodyLimit: UPLOAD_LIMIT_BYTES },
+      (_req, body, done) => done(null, body),
+    );
+    scope.post("/backups/upload", { bodyLimit: UPLOAD_LIMIT_BYTES }, async (req) => {
+      if (!Buffer.isBuffer(req.body)) throw badRequest("DB 파일을 선택하세요.");
+      const name = (req.query as { name?: unknown }).name;
+      await prepareUploadRestore(ctx, req.body, typeof name === "string" ? name : "", clientIp(req));
+      requestExit(EXIT_RESTORE);
+      return { message: "DB 파일로 복구합니다. 서버가 잠시 재시작됩니다." };
+    });
   });
 
   app.get("/export.xlsx", async (_req, reply) => {

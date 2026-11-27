@@ -18,7 +18,7 @@ import { registerOvertimeRoutes } from "./routes/overtime.ts";
 import { registerSettingsRoutes } from "./routes/settings.ts";
 import { registerCategoryRoutes } from "./routes/categories.ts";
 import { registerDepartmentRoutes } from "./routes/departments.ts";
-import { registerSystemRoutes } from "./routes/system.ts";
+import { UPLOAD_RESTORE_PATH, registerSystemRoutes } from "./routes/system.ts";
 import { registerUsageRoutes } from "./routes/usage.ts";
 
 interface BuildAppOptions {
@@ -58,7 +58,7 @@ export function hostnameOf(host: string): string {
  * 3) 본문을 보내는 변경 요청은 application/json 만 (text/plain 폼 전송 차단)
  */
 export function checkApiRequest(
-  req: Pick<FastifyRequest, "method" | "headers">,
+  req: Pick<FastifyRequest, "method" | "headers"> & { url?: string },
   allowedHosts: ReadonlySet<string>,
 ): { status: number; error: string } | null {
   const host = req.headers.host;
@@ -85,11 +85,17 @@ export function checkApiRequest(
     if (!sameOrigin) return { status: 403, error: "다른 사이트에서 보낸 요청은 처리하지 않습니다." };
   }
 
-  const contentType = req.headers["content-type"];
+  const contentType = req.headers["content-type"]?.trim().toLowerCase();
+  // DB 파일로 복구만 파일 내용을 그대로 받음
+  const fileUpload =
+    method === "POST" &&
+    req.url?.split("?")[0] === UPLOAD_RESTORE_PATH &&
+    contentType?.startsWith("application/octet-stream");
   if (
     (method === "POST" || method === "PUT" || method === "PATCH") &&
     contentType !== undefined &&
-    !contentType.trim().toLowerCase().startsWith("application/json")
+    !contentType.startsWith("application/json") &&
+    !fileUpload
   ) {
     return { status: 415, error: "요청 형식이 올바르지 않습니다." };
   }

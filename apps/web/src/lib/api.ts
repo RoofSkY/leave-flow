@@ -14,10 +14,13 @@ export class ApiRequestError extends Error {
 async function send(method: string, url: string, body?: unknown): Promise<Response> {
   let res: Response;
   try {
+    // 파일(Blob)은 내용 그대로, 나머지는 JSON
+    const file = body instanceof Blob;
     res = await fetch(url, {
       method,
-      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers:
+        body === undefined ? undefined : { "Content-Type": file ? "application/octet-stream" : "application/json" },
+      body: body === undefined ? undefined : file ? body : JSON.stringify(body),
     });
   } catch {
     throw new ApiRequestError(0, "서버에 연결할 수 없습니다. 출결 PC가 켜져 있는지 확인하세요.");
@@ -72,6 +75,8 @@ export const api = {
   post: <T>(url: string, body: unknown = {}) => request<T>("POST", url, body),
   put: <T>(url: string, body: unknown) => request<T>("PUT", url, body),
   del: <T>(url: string) => request<T>("DELETE", url),
+  /** 파일 내용을 그대로 POST */
+  upload: <T>(url: string, file: Blob) => request<T>("POST", url, file),
 };
 
 export function errorMessage(err: unknown): string {

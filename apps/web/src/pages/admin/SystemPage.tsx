@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { BackupFile, SystemInfo, UpdateCheckResult } from "@leave-flow/shared";
 import {
@@ -12,7 +12,7 @@ import {
   useConfirm,
   useToast,
 } from "../../components/ui/index.tsx";
-import { api, errorMessage } from "../../lib/api.ts";
+import { api, errorMessage, qs } from "../../lib/api.ts";
 import { formatTimestamp } from "../../lib/format.ts";
 import { qk } from "../../lib/queries.ts";
 import "./SystemPage.css";
@@ -103,7 +103,17 @@ export function SystemPage() {
     mutationFn: (b: BackupFile) =>
       api.post<{ message: string }>("/api/backups/restore", { name: b.name, location: b.location }),
   });
-  const busy = !!restarting || backupNow.isPending || check.isPending || apply.isPending || restore.isPending;
+  const restoreFile = useMutation({
+    mutationFn: (file: File) => api.upload<{ message: string }>(`/api/backups/upload${qs({ name: file.name })}`, file),
+  });
+  const fileInput = useRef<HTMLInputElement>(null);
+  const busy =
+    !!restarting ||
+    backupNow.isPending ||
+    check.isPending ||
+    apply.isPending ||
+    restore.isPending ||
+    restoreFile.isPending;
 
   // 서버가 다시 시작될 때까지 기다렸다가 새로고침 (업데이트면 새 버전, 되돌렸으면 이전 버전으로 뜸)
   useEffect(() => {
@@ -197,6 +207,27 @@ export function SystemPage() {
     if (!ok) return;
     try {
       const result = await restore.mutateAsync(b);
+      toast(result.message);
+      startRestart("restore");
+    } catch (err) {
+      toast(errorMessage(err), "error");
+    }
+  };
+
+  /** 직접 고른 DB 파일로 복구 (다른 PC에서 가져온 DB, 백업 목록에 없는 백업 파일 등) */
+  const onRestoreFile = async (file: File) => {
+    const ok = await confirm({
+      title: "DB 파일로 복구",
+      message:
+        `${file.name} (${formatSize(file.size)})\n\n` +
+        "현재 데이터를 백업한 뒤, 휴가원·시간외근무 신청서·관리 화면 내용이 모두 이 파일의 내용으로 바뀝니다.\n" +
+        "복구하는 동안 서버가 재시작되어 모든 직원의 화면이 잠깐 끊깁니다.",
+      confirmLabel: "복구",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      const result = await restoreFile.mutateAsync(file);
       toast(result.message);
       startRestart("restore");
     } catch (err) {
@@ -375,7 +406,25 @@ export function SystemPage() {
           </h2>
           <span className="spacer" />
           {backups.data && backups.data.length > 0 && <span className="muted">{backups.data.length}개</span>}
+          <Button size="sm" onClick={() => fileInput.current?.click()} disabled={busy}>
+            {restoreFile.isPending ? "파일 올리는 중…" : "DB 파일에서 복구…"}
+          </Button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".db,.sqlite,.sqlite3"
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) void onRestoreFile(file);
+            }}
+          />
         </div>
+        <p className="system-text muted">
+          목록에 없는 백업 파일이나 다른 PC의 DB 파일(leave-flow.db)로 복구하려면 'DB 파일에서 복구'를 누르세요. 그
+          PC에서 프로그램을 끈 뒤 복사한 파일을 쓰세요.
+        </p>
         <ErrorText error={backups.error} />
         {backups.isPending && !restarting ? (
           <Spinner />

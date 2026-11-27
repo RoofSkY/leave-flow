@@ -456,3 +456,64 @@ describe("업데이트 적용", () => {
     expect(readLauncherState(ctx.config.homeDir)?.pending).toBe("0.2.1");
   });
 });
+
+describe("DB 파일로 복구 (화면에서 고른 파일)", () => {
+  const upload = (app: Awaited<ReturnType<typeof createTestApp>>["app"], body: Buffer, name = "my.db") =>
+    app.inject({
+      method: "POST",
+      url: `/api/backups/upload?name=${encodeURIComponent(name)}`,
+      headers: { "content-type": "application/octet-stream" },
+      payload: body,
+    });
+
+  it("고른 DB 파일로 복구 대기 파일을 만들고 지금 DB를 백업한 뒤 종료 코드 76", async () => {
+    const t = await createTestApp();
+    insertEmployee(t.db, { name: "가져올 직원" });
+    const backup = await t.app.inject({ method: "POST", url: "/api/backups" });
+    const file = readFileSync(path.join(t.ctx.config.backupDir, backup.json().name));
+    insertEmployee(t.db, { name: "지금 직원" });
+
+    const res = await upload(t.app, file, "옛날.db");
+    expect(res.statusCode).toBe(200);
+    expect(t.exitCodes).toEqual([76]);
+    expect(readdirSync(t.ctx.config.backupDir).filter((n) => n.includes("pre-restore"))).toHaveLength(1);
+    const pending = new DatabaseSync(path.join(t.ctx.config.dataDir, PENDING_RESTORE_NAME));
+    expect(queryAll(pending, "SELECT name FROM employees").map((r) => r.name)).toEqual(["가져올 직원"]);
+    expect(queryAll(pending, "SELECT summary FROM audit_logs WHERE action = 'restore_backup'")).toEqual([
+      { summary: "DB 파일로 복구: 옛날.db" },
+    ]);
+    pending.close();
+  });
+
+  it("DB 파일이 아니거나 비었거나 더 새 버전 DB면 400, 아무것도 남기지 않음", async () => {
+    const t = await createTestApp();
+    const bad = await upload(t.app, Buffer.from("not a database"));
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().error).toBe("올바른 leave-flow 백업 파일이 아닙니다.");
+    expect((await upload(t.app, Buffer.alloc(0))).statusCode).toBe(400);
+
+    const backup = await t.app.inject({ method: "POST", url: "/api/backups" });
+    const newer = path.join(t.ctx.config.backupDir, backup.json().name);
+    const db = new DatabaseSync(newer);
+    db.exec("INSERT INTO schema_migrations (version, name, applied_at) VALUES (9999, 'future', '2030-01-01 00:00:00')");
+    db.close();
+    const res = await upload(t.app, readFileSync(newer));
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("이 프로그램보다 새 버전에서 만든 DB 파일입니다. 프로그램을 먼저 업데이트하세요.");
+
+    expect(existsSync(path.join(t.ctx.config.dataDir, PENDING_RESTORE_NAME))).toBe(false);
+    expect(readdirSync(t.ctx.config.backupDir).filter((n) => n.includes("pre-restore"))).toEqual([]);
+    expect(t.exitCodes).toEqual([]);
+  });
+
+  it("파일 내용 형식은 이 경로에서만 받음", async () => {
+    const { app } = await createTestApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/backups",
+      headers: { "content-type": "application/octet-stream" },
+      payload: Buffer.from("x"),
+    });
+    expect(res.statusCode).toBe(415);
+  });
+});

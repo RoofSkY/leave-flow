@@ -7,6 +7,7 @@ import { addDays, localTimestamp, type BackupFile } from "@leave-flow/shared";
 import type { Config } from "../config.ts";
 import type { AppContext } from "../context.ts";
 import { execute, queryAll, queryOne, transaction, type Db } from "../db/index.ts";
+import { migrations } from "../db/migrations.ts";
 import { ApiError, badRequest, notFound } from "../lib/errors.ts";
 import { writeAudit } from "./audit.ts";
 import { SYSTEM_KEYS, setValue } from "./settings.ts";
@@ -249,15 +250,28 @@ export async function listBackups(config: Config): Promise<BackupFile[]> {
   );
 }
 
-/** leave-flow DB인지 확인 (무결성 검사 + 마이그레이션 표) */
+/** 이 프로그램이 아는 마지막 마이그레이션 번호 */
+const LATEST_MIGRATION = Math.max(...migrations.map((m) => m.version));
+
+const NOT_LEAVE_FLOW_DB = "올바른 leave-flow 백업 파일이 아닙니다.";
+
+/** leave-flow DB인지 확인 (무결성 검사 + 마이그레이션 표 + 이 프로그램보다 새 버전 DB가 아닌지) */
 function checkBackupFile(file: string): void {
-  const db = new DatabaseSync(file);
+  let latest: number | null | undefined;
   try {
-    const check = queryOne<{ quick_check: string }>(db, "PRAGMA quick_check");
-    if (check?.quick_check !== "ok") throw new Error("무결성 검사 실패");
-    queryOne(db, "SELECT MAX(version) AS v FROM schema_migrations");
-  } finally {
-    db.close();
+    const db = new DatabaseSync(file);
+    try {
+      const check = queryOne<{ quick_check: string }>(db, "PRAGMA quick_check");
+      if (check?.quick_check !== "ok") throw new Error("무결성 검사 실패");
+      latest = queryOne<{ v: number | null }>(db, "SELECT MAX(version) AS v FROM schema_migrations")?.v;
+    } finally {
+      db.close();
+    }
+  } catch {
+    throw badRequest(NOT_LEAVE_FLOW_DB);
+  }
+  if (latest != null && latest > LATEST_MIGRATION) {
+    throw badRequest("이 프로그램보다 새 버전에서 만든 DB 파일입니다. 프로그램을 먼저 업데이트하세요.");
   }
 }
 
@@ -284,46 +298,29 @@ function stampRestoreFile(file: string, current: Db, ip: string, summary: string
 }
 
 /**
- * 백업 복구 준비. 고른 백업을 data/restore-pending.db 로 복사하고 지금 DB를 백업(pre-restore).
- * 실제 교체는 재시작(종료 코드 76) 후 applyPendingRestore 가 함.
+ * 복구 준비 공통: write 로 data/restore-pending.db.partial 을 만들고 검사한 뒤 지금 DB를 백업(pre-restore)하고
+ * restore-pending.db 로 바꿈. 실제 교체는 재시작(종료 코드 76) 후 applyPendingRestore 가 함.
  */
-export async function prepareRestore(
+async function stageRestore(
   ctx: AppContext,
-  name: string,
-  location: BackupFile["location"],
+  write: (partial: string) => Promise<void>,
+  summary: string,
+  after: Record<string, unknown>,
   ip: string,
 ): Promise<void> {
   const { config, db } = ctx;
-  // 이름 규칙에 맞아야 함 → 경로 구분자·".." 가 들어갈 수 없음
-  if (!isBackupName(name)) throw badRequest("백업 파일 이름이 올바르지 않습니다.");
-  const dir = backupDirOf(config, location);
-  if (!dir) throw badRequest("NAS 백업 폴더가 설정되어 있지 않습니다.");
-  const source = path.join(dir, name);
-  const exists = await stat(source).then(
-    (s) => s.isFile(),
-    () => false,
-  );
-  if (!exists) throw notFound("백업 파일을 찾을 수 없습니다.");
-
-  const where = location === "local" ? "로컬" : "NAS";
-  const summary = `백업 복구: ${name} (${where})`;
   mkdirSync(config.dataDir, { recursive: true });
   const pending = path.join(config.dataDir, PENDING_RESTORE_NAME);
   const partial = `${pending}.partial`;
   rmSync(partial, { force: true });
   try {
-    await copyFile(source, partial);
+    await write(partial);
   } catch (err) {
-    throw new ApiError(500, `백업 파일을 복사하지 못했습니다. (${errText(err)})`);
+    rmSync(partial, { force: true });
+    throw new ApiError(500, `복구할 파일을 복사하지 못했습니다. (${errText(err)})`);
   }
   try {
     checkBackupFile(partial);
-  } catch {
-    rmSync(partial, { force: true });
-    throw badRequest("올바른 leave-flow 백업 파일이 아닙니다.");
-  }
-
-  try {
     await createBackup(ctx, "pre-restore");
     stampRestoreFile(partial, db, ip, summary, ctx.now());
   } catch (err) {
@@ -333,7 +330,41 @@ export async function prepareRestore(
   }
   renameSync(partial, pending);
   transaction(db, () =>
-    writeAudit(db, ip, { entity: "system", action: "restore_backup", summary, after: { name, location } }, ctx.now()),
+    writeAudit(db, ip, { entity: "system", action: "restore_backup", summary, after }, ctx.now()),
+  );
+}
+
+/** 백업 목록(로컬·NAS)에서 고른 백업으로 복구 준비 */
+export async function prepareRestore(
+  ctx: AppContext,
+  name: string,
+  location: BackupFile["location"],
+  ip: string,
+): Promise<void> {
+  // 이름 규칙에 맞아야 함 → 경로 구분자·".." 가 들어갈 수 없음
+  if (!isBackupName(name)) throw badRequest("백업 파일 이름이 올바르지 않습니다.");
+  const dir = backupDirOf(ctx.config, location);
+  if (!dir) throw badRequest("NAS 백업 폴더가 설정되어 있지 않습니다.");
+  const source = path.join(dir, name);
+  const exists = await stat(source).then(
+    (s) => s.isFile(),
+    () => false,
+  );
+  if (!exists) throw notFound("백업 파일을 찾을 수 없습니다.");
+  const where = location === "local" ? "로컬" : "NAS";
+  await stageRestore(ctx, (partial) => copyFile(source, partial), `백업 복구: ${name} (${where})`, { name, location }, ip);
+}
+
+/** 화면에서 직접 고른 DB 파일(내용)로 복구 준비. fileName 은 변경 이력에 남길 원래 파일 이름 */
+export async function prepareUploadRestore(ctx: AppContext, data: Buffer, fileName: string, ip: string): Promise<void> {
+  if (data.length === 0) throw badRequest("DB 파일을 선택하세요.");
+  const name = fileName.trim().slice(0, 200) || "(이름 없음)";
+  await stageRestore(
+    ctx,
+    (partial) => writeFile(partial, data),
+    `DB 파일로 복구: ${name}`,
+    { name, location: "upload", size: data.length },
+    ip,
   );
 }
 
