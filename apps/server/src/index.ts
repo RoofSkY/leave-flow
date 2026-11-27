@@ -6,6 +6,7 @@ import { loadConfig } from "./config.ts";
 import { createContext } from "./context.ts";
 import { openDatabase } from "./db/index.ts";
 import { applyPendingRestore, startBackupScheduler } from "./services/backup.ts";
+import { importGoogleHolidaysOnStart } from "./services/googleHolidays.ts";
 import { startUpdateScheduler } from "./services/updater.ts";
 import { APP_VERSION } from "./version.ts";
 
@@ -61,3 +62,5 @@ process.on("SIGTERM", () => void shutdown(0));
 await app.listen({ host: config.host, port: config.port });
 app.log.info(`leave-flow ${APP_VERSION} 시작: http://${config.host}:${config.port} (데이터: ${config.dataDir})`);
 if (restored) app.log.warn("백업 파일로 DB를 복구했습니다.");
+// 공휴일은 서버를 켤 때만 가져옴 (주기 확인 없음)
+void importGoogleHolidaysOnStart(ctx);
