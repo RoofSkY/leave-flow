@@ -56,6 +56,98 @@
   font-size: 13px;
 }
 
+/* 날짜 입력 (DatePicker): 입력칸 + 달력 창 */
+.date-input {
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.date-pop {
+  position: fixed;
+  z-index: 150;
+  padding: 10px 10px 8px;
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  box-shadow: var(--shadow-lg);
+}
+
+/* 한 달 달력 (MonthCalendar): 날짜 입력 창·달력 화면 축소판 */
+.mcal-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 0 4px 6px;
+}
+.mcal-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.mcal-today,
+.mcal-nav {
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.mcal-today {
+  padding: 0 8px;
+  font-size: 13px;
+}
+.mcal-nav {
+  width: 26px;
+  font-size: 18px;
+  line-height: 1;
+}
+.mcal-today:hover,
+.mcal-nav:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.mcal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.mcal-dow {
+  padding: 4px 0;
+  color: var(--text-faint);
+  font-size: 12px;
+  text-align: center;
+}
+.mcal-day {
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.mcal-day:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.mcal-day.is-other {
+  color: var(--text-faint);
+}
+.mcal-day.is-today {
+  color: var(--accent);
+  font-weight: 600;
+}
+.mcal-day.is-selected,
+.mcal-day.is-selected:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+.mcal-day:disabled {
+  color: var(--border-strong);
+  cursor: not-allowed;
+}
+
 /* 직원 여러 명 고르기 (EmployeeMultiSelect) */
 .emp-multi {
   display: flex;

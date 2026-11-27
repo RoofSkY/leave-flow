@@ -7,7 +7,7 @@
   --bg-subtle: #f7f7f5;
   --bg-hover: #efefed;
   --bg-active: #e8e8e6;
-  --bg-weekend: #fbfbfa;
+  --bg-weekend: #f2f2f0;
   --bg-holiday: #fdf3f2;
   --border: #e9e9e7;
   --border-strong: #d9d9d6;
@@ -29,6 +29,7 @@
   --success: #448361;
   --success-soft: #edf3ec;
   --holiday: #d44c47;
+  --saturday: #2f6fc0;
 
   --radius-sm: 4px;
   --radius: 6px;
@@ -67,6 +68,14 @@ body {
   /* 한국어 문장이 낱말 중간에서 줄바꿈되지 않게 */
   word-break: keep-all;
   overflow-wrap: break-word;
+  /* 끌어서 글자가 선택되지 않게 (입력칸은 아래에서 다시 허용) */
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
 }
 
 a {

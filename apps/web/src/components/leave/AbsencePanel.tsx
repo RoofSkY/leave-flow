@@ -1,6 +1,6 @@
 import type { AbsenceRow } from "@leave-flow/shared";
 import { useEffect, useState } from "react";
-import { Button, ColorDot, ErrorText, Spinner } from "../ui/index.tsx";
+import { ColorDot, ErrorText, Spinner } from "../ui/index.tsx";
 import { formatLeaveMinutes } from "@leave-flow/shared";
 import { formatDateKo, localToday } from "../../lib/format.ts";
 import { shortRange, useAbsences } from "./leaveQueries.ts";
@@ -62,21 +62,15 @@ function useLocalToday(): string {
   return today;
 }
 
-/** 오늘 / 이번 주(월~일) 휴가자 */
-export function AbsencePanel({ onOpenRequest, onClose }: { onOpenRequest: (id: number) => void; onClose: () => void }) {
+/** 오늘 / 이번 주(월~일) 휴가자 (달력 오른쪽 패널) */
+export function AbsencePanel({ onOpenRequest }: { onOpenRequest: (id: number) => void }) {
   // 날짜가 바뀌면 조회 키도 새 날짜로 바뀌어 다시 불러옴
   const today = useLocalToday();
   const { data, isPending, error } = useAbsences(today);
 
   return (
-    <aside className="lf-absence" aria-label="부재자">
-      <div className="lf-absence-head">
-        <h2>부재자</h2>
-        <span className="spacer" />
-        <Button variant="ghost" size="sm" icon title="패널 닫기" aria-label="패널 닫기" onClick={onClose}>
-          ✕
-        </Button>
-      </div>
+    <section className="lf-absence" aria-label="부재자">
+      <h2 className="lf-side-title">부재자</h2>
       {isPending ? (
         <Spinner />
       ) : error ? (
@@ -100,6 +94,6 @@ export function AbsencePanel({ onOpenRequest, onClose }: { onOpenRequest: (id: n
           </section>
         </>
       )}
-    </aside>
+    </section>
   );
 }

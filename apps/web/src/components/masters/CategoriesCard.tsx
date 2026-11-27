@@ -25,9 +25,10 @@ export function CategoriesCard() {
   const refresh = () =>
     Promise.all([
       qc.invalidateQueries({ queryKey: qk.categories() }),
-      // 이름·특별휴가 대상을 바꾸면 직원 구분과 휴가 종류 적용 대상도 바뀜
+      // 이름·특별휴가 대상을 바꾸면 직원 구분, 휴가 종류 적용 대상, 달력 필터에 쓰는 일정의 구분도 바뀜
       qc.invalidateQueries({ queryKey: ["employees"] }),
       qc.invalidateQueries({ queryKey: ["leave-types"] }),
+      qc.invalidateQueries({ queryKey: ["calendar-events"] }),
     ]);
 
   const add = useMutation({

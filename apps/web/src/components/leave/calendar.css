@@ -42,30 +42,50 @@
   min-height: 0;
 }
 
-/* 월/주 전환 */
-.lf-seg {
+/* 이전·다음 (∧∨) */
+.lf-cal-nav {
   display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--radius);
-  background: var(--bg-hover);
 }
-.lf-seg button {
-  height: 26px;
-  min-width: 40px;
-  padding: 0 12px;
+
+/* [월 ∨] 보기 메뉴 */
+.lf-menu-wrap {
+  position: relative;
+}
+.lf-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  min-width: 160px;
+  padding: 4px;
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  box-shadow: var(--shadow-lg);
+}
+.lf-menu-item {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   background: transparent;
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 14px;
+  text-align: left;
   cursor: pointer;
 }
-.lf-seg button[aria-pressed="true"] {
-  background: var(--bg);
-  color: var(--text);
-  box-shadow: var(--shadow-sm);
+.lf-menu-item:hover {
+  background: var(--bg-hover);
+}
+.lf-menu-check {
+  color: var(--accent);
+}
+.lf-menu-key {
+  color: var(--text-faint);
+  font-size: 12px;
 }
 
 /* ---------- FullCalendar ---------- */
@@ -104,8 +124,14 @@
 .lf-cal-body .fc .fc-day-sun .lf-dow {
   color: var(--holiday);
 }
+.lf-cal-body .fc .fc-day-sat .lf-dow {
+  color: var(--saturday);
+}
 
-/* 날짜 칸 */
+/* 날짜 칸. 월 보기 6주(MONTH_WEEKS)는 내용(공휴일 이름 줄 등)과 관계없이 같은 높이로 */
+.lf-cal-body .fc .fc-daygrid-body tbody > tr {
+  height: calc(100% / 6);
+}
 .lf-cal-body .fc .lf-weekend {
   background: var(--bg-weekend);
 }
@@ -125,10 +151,12 @@
   color: inherit;
   text-decoration: none;
 }
+/* 공휴일 이름이 숫자 옆에 다 들어가지 않으면 숫자 아랫줄로 */
 .lf-day-top {
   display: flex;
+  flex-wrap: wrap-reverse;
   align-items: center;
-  gap: 4px;
+  gap: 0 4px;
   width: 100%;
   min-width: 0;
 }
@@ -146,16 +174,23 @@
   font-size: 12px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.lf-cal-body .fc-day-other .lf-day-num {
+/* 월 보기: 제목의 달이 아닌 날 */
+.lf-cal-body .lf-other-month .lf-day-num {
   color: var(--text-faint);
+}
+.lf-cal-body .fc-day-sat .lf-day-num {
+  color: var(--saturday);
 }
 .lf-cal-body .fc-day-sun .lf-day-num,
 .lf-cal-body .lf-holiday .lf-day-num {
   color: var(--holiday);
 }
+/* 오늘: 축소판과 같은 빨간 둥근 네모 */
 .lf-cal-body .lf-day-num.is-today {
-  background: var(--accent);
+  border-radius: var(--radius);
+  background: var(--danger);
   color: var(--text-on-accent);
   font-weight: 600;
 }
@@ -171,37 +206,17 @@
   color: var(--warning);
 }
 
-/* + 버튼: 칸에 마우스를 올리면 좌상단에 */
-.lf-add {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.1s;
+/* 축소판에서 고른 날: 잠깐 강조(lf-picked)한 뒤 원래 칸 색으로 천천히(lf-unpicking, 길이는 PICK_FADE_MS 와 같게) */
+.lf-cal-body .fc .lf-picked {
+  background: var(--accent-soft);
 }
-.lf-cal-body .fc-daygrid-day:hover .lf-add,
-.lf-cal-body .fc-col-header-cell:hover .lf-add,
-.lf-add:focus-visible {
-  opacity: 1;
+.lf-cal-body .fc .lf-unpicking {
+  animation: lf-unpick 1s ease-out;
 }
-.lf-add:hover {
-  background: var(--bg-active);
-  color: var(--text);
-}
-@media (hover: none) {
-  .lf-add {
-    opacity: 0.6;
+/* to 를 비워 두면 칸 본래 값(주말·공휴일 색 등)으로 돌아감 */
+@keyframes lf-unpick {
+  from {
+    background-color: var(--accent-soft);
   }
 }
 
@@ -283,6 +298,11 @@
   justify-content: center;
   gap: 4px;
   min-width: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.lf-wk-head:hover {
+  background: var(--bg-hover);
 }
 .lf-wk-head .lf-day-num {
   margin-left: 0;
@@ -312,25 +332,381 @@
   box-shadow: 0 0 0 1px var(--bg);
 }
 
-/* ---------- 부재자 패널 ---------- */
-.lf-absence {
+/* ---------- 옆 패널: 왼쪽 축소판·필터, 오른쪽 단축키·부재자 ---------- */
+.lf-side {
   flex: none;
-  width: 280px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 24px;
   padding: 14px 14px 20px;
-  border-left: 1px solid var(--border);
   background: var(--bg);
   overflow-y: auto;
 }
-.lf-absence-head {
+.lf-side.is-left {
+  /* 휴가원 목록(is-list)이 이 아래에서 미끄러져 나오게 */
+  position: relative;
+  z-index: 16;
+  width: 248px;
+  border-right: 1px solid var(--border);
+}
+.lf-side.is-right {
+  width: 280px;
+  border-left: 1px solid var(--border);
+}
+.lf-side-title {
+  margin-bottom: 8px;
+  font-size: 15px;
+}
+/* 좁은 화면에서 겹쳐 띄울 때만 */
+.lf-side-close {
+  display: none;
+}
+.lf-mini .mcal-title {
+  font-size: 13px;
+}
+.lf-mini .mcal-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.lf-mini .mcal-dow {
+  font-size: 11px;
+}
+.lf-mini .mcal-day {
+  height: 28px;
+  font-size: 12px;
+}
+/* 축소판의 오늘: 빨간 네모 */
+.lf-mini .mcal-day.is-today,
+.lf-mini .mcal-day.is-today:hover:not(:disabled) {
+  background: var(--danger);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+
+/* 필터 (CalendarFilter): 켜면 진한 색 네모, 끄면 옅은 네모 + 흐린 글씨 + 눈 빗금 */
+.cal-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cal-filter-head {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.lf-absence-head h2 {
-  font-size: 15px;
+.cal-filter-head .lf-side-title {
+  margin: 0;
+}
+.cal-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* "필터" 제목 아래 전체를 한 칸 들여씀 */
+  padding-left: 12px;
+}
+.cal-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  margin: 0 -6px;
+  padding: 0 2px 0 6px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+}
+/* 소속·구분·직원 제목: 마우스를 올리면 앞(들여쓴 자리)에 접기 화살표, 접힌 동안은 늘 보임 */
+.cal-filter-title {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 26px;
+  margin: 0 -6px 0 -18px;
+  padding: 0 6px 0 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cal-filter-title:hover {
+  background: var(--bg-hover);
+}
+.cal-filter-title .field-label {
+  margin: 0;
+  cursor: inherit;
+}
+.cal-filter-fold {
+  display: inline-flex;
+  width: 12px;
+  color: var(--text-muted);
+  visibility: hidden;
+}
+.cal-filter-title:hover .cal-filter-fold,
+.cal-filter-title:focus-visible .cal-filter-fold,
+.cal-filter-group.is-collapsed .cal-filter-fold {
+  visibility: visible;
+}
+/* 소속·구분·직원 제목 아래 항목은 한 칸 들여씀 */
+.cal-filter-title ~ .cal-filter-row {
+  margin-left: 6px;
+}
+.cal-filter-title ~ .field-hint {
+  padding-left: 12px;
+}
+.cal-filter-row:hover,
+.cal-filter-row.is-open {
+  background: var(--bg-hover);
+}
+/* 색 네모 = 보이기 체크 */
+.cal-filter-check {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border-radius: var(--radius-sm);
+  background: var(--c);
+  appearance: none;
+  cursor: pointer;
+}
+.cal-filter-row.is-off .cal-filter-check {
+  background: var(--c-soft);
+}
+.cal-filter-check:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* 색 네모 대신 아이콘 (취소된 휴가): 체크는 숨기고 아이콘을 눌러 켜고 끔 */
+.cal-filter-icon {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.cal-filter-row.is-off .cal-filter-icon {
+  color: var(--text-faint);
+}
+.cal-filter-icon .cal-filter-check {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  opacity: 0;
+}
+.cal-filter-icon:has(.cal-filter-check:focus-visible) {
+  border-radius: var(--radius-sm);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* 이름 = 휴가원 목록 열기 */
+.cal-filter-name {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cal-filter-row.is-off .cal-filter-name,
+.cal-filter-row.is-muted .cal-filter-name {
+  color: var(--text-faint);
+}
+/* 눈 = 보이기/숨기기. 끈 줄·마우스를 올린 줄·목록을 연 줄에만 */
+.cal-filter-eye {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  visibility: hidden;
+}
+.cal-filter-eye:hover {
+  background: var(--bg-active);
+  color: var(--text-muted);
+}
+.cal-filter-row:hover .cal-filter-eye,
+.cal-filter-row:focus-within .cal-filter-eye,
+.cal-filter-row.is-off .cal-filter-eye,
+.cal-filter-row.is-open .cal-filter-eye {
+  visibility: visible;
+}
+@media (hover: none) {
+  .cal-filter-eye {
+    visibility: visible;
+  }
+}
+
+/* 필터 항목별 휴가원 목록 (FilterLeaveList): 왼쪽 패널 옆, 달력 크기는 그대로 두고 위에 겹쳐 뜸 */
+.lf-side.is-list {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 248px;
+  z-index: 15;
+  width: 300px;
+  gap: 12px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-subtle);
+  box-shadow: var(--shadow-lg);
+  animation: lf-list-in 0.2s ease-out;
+}
+.lf-side.is-list.is-closing {
+  animation: lf-list-out 0.16s ease-in forwards;
+  pointer-events: none;
+}
+@keyframes lf-list-in {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+}
+@keyframes lf-list-out {
+  to {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+}
+.lf-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.lf-card-swatch {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-sm);
+}
+.lf-card-head-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.lf-card-head .lf-side-title {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lf-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lf-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  box-shadow: var(--shadow-sm);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.lf-card:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+.lf-card-period {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lf-card-type {
+  font-size: 14px;
+  font-weight: 600;
+}
+.lf-card-when {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.lf-card.is-cancelled .lf-card-period {
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+.lf-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+.lf-card-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* 단축키 안내 */
+.lf-keys-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lf-keys-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.lf-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 부재자 */
+.lf-absence {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.lf-absence .lf-side-title {
+  margin-bottom: 0;
 }
 .lf-absence-section h3 {
   display: flex;
@@ -398,12 +774,22 @@
 
 /* 좁은 화면: 패널을 달력 위에 겹쳐 띄움 */
 @media (max-width: 960px) {
-  .lf-absence {
+  .lf-side {
     position: absolute;
     top: 0;
-    right: 0;
     bottom: 0;
     z-index: 20;
     box-shadow: var(--shadow-lg);
+  }
+  .lf-side.is-left {
+    left: 0;
+  }
+  .lf-side.is-right {
+    right: 0;
+  }
+  .lf-side-close {
+    display: inline-flex;
+    align-self: flex-end;
+    margin: -6px -6px -16px 0;
   }
 }

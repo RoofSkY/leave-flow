@@ -52,6 +52,7 @@ export function registerLeaveRequestRoutes(app: FastifyInstance, ctx: AppContext
   };
 
   // 목록: 첫 항목 시작 내림차순. from/to 는 항목 기간이 겹치는 휴가원
+  // department/category 는 직원의 지금 소속·구분, limit/offset 은 나눠 불러오기 (달력 필터 항목별 목록)
   app.get("/leave-requests", async (req) => {
     const employeeId = queryInt(req.query, "employeeId");
     const status = queryStr(req.query, "status") ?? "active";
@@ -60,11 +61,25 @@ export function registerLeaveRequestRoutes(app: FastifyInstance, ctx: AppContext
     }
     const from = dateQuery(req.query, "from");
     const to = dateQuery(req.query, "to");
+    const department = queryStr(req.query, "department");
+    const category = queryStr(req.query, "category");
+    const limit = queryInt(req.query, "limit");
+    const offset = queryInt(req.query, "offset") ?? 0;
+    if (limit !== undefined && limit < 1) throw badRequest("limit 값이 올바르지 않습니다.");
+    if (offset < 0) throw badRequest("offset 값이 올바르지 않습니다.");
     const where: string[] = [];
     const params: SQLInputValue[] = [];
     if (employeeId !== undefined) {
       where.push("r.employee_id = ?");
       params.push(employeeId);
+    }
+    if (department !== undefined) {
+      where.push("r.employee_id IN (SELECT id FROM employees WHERE department = ?)");
+      params.push(department);
+    }
+    if (category !== undefined) {
+      where.push("r.employee_id IN (SELECT id FROM employees WHERE category = ?)");
+      params.push(category);
     }
     if (status !== "all") {
       where.push("r.status = ?");
@@ -79,8 +94,9 @@ export function registerLeaveRequestRoutes(app: FastifyInstance, ctx: AppContext
     const ids = queryAll<{ id: number }>(
       db,
       `SELECT r.id FROM leave_requests r ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-        ORDER BY (SELECT MIN(start_at) FROM leave_request_items WHERE request_id = r.id) DESC, r.id DESC`,
-      params,
+        ORDER BY (SELECT MIN(start_at) FROM leave_request_items WHERE request_id = r.id) DESC, r.id DESC
+        ${limit !== undefined ? "LIMIT ? OFFSET ?" : ""}`,
+      limit !== undefined ? [...params, limit, offset] : params,
     ).map((r) => Number(r.id));
     return getLeaveRequests(db, ids);
   });

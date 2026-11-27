@@ -1,7 +1,8 @@
 import type { Employee, LeaveType } from "@leave-flow/shared";
-import { LEAVE_STEP_MINUTES, MAX_YEAR, MIN_YEAR } from "@leave-flow/shared";
+import { LEAVE_STEP_MINUTES } from "@leave-flow/shared";
 import { Select, TextInput } from "../ui/index.tsx";
 
+export { DateInput } from "./DatePicker.tsx";
 export { TimeSelect } from "./TimePicker.tsx";
 export { PhoneInput } from "./PhoneInput.tsx";
 export { EmployeeMultiSelect } from "./EmployeeMultiSelect.tsx";
@@ -13,35 +14,6 @@ export function allDayTimes(): string[] {
     out.push(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
   }
   return out;
-}
-
-/** 날짜 입력. min·max 를 주지 않으면 입력 가능한 연도 범위(MIN_YEAR~MAX_YEAR)로 제한 */
-export function DateInput({
-  value,
-  onChange,
-  min,
-  max,
-  invalid,
-  ariaLabel,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  min?: string;
-  max?: string;
-  invalid?: boolean;
-  ariaLabel?: string;
-}) {
-  return (
-    <TextInput
-      type="date"
-      value={value}
-      min={min ?? `${MIN_YEAR}-01-01`}
-      max={max ?? `${MAX_YEAR}-12-31`}
-      aria-invalid={invalid || undefined}
-      aria-label={ariaLabel}
-      onChange={(e) => onChange(e.target.value)}
-    />
-  );
 }
 
 const MAX_DURATION_HOURS = 999;

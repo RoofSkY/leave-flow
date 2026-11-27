@@ -292,6 +292,38 @@ describe("휴가원 작성", () => {
     expect((await s.app.inject({ url: "/api/leave-requests?from=2026-13-01" })).statusCode).toBe(400);
   });
 
+  it("목록: 직원의 지금 소속·구분으로 거르기, limit/offset 으로 나눠 불러오기", async () => {
+    const s = await setup();
+    const other = insertEmployee(s.db, { name: "김철수", department: "지역센터", category: "정규직" });
+    const mine = async (date: string) =>
+      (await s.createOk([{ leaveTypeId: s.annual, startAt: `${date}T10:00`, endAt: `${date}T19:00` }])).request.id;
+    const a = await mine("2026-10-01");
+    const b = await mine("2026-10-02");
+    const c = (
+      await s.app.inject({
+        method: "POST",
+        url: "/api/leave-requests",
+        payload: {
+          ...s.body([{ leaveTypeId: s.annual, startAt: "2026-10-05T10:00", endAt: "2026-10-05T19:00" }]),
+          employeeId: other,
+        },
+      })
+    ).json<LeaveSaveResult>().request.id;
+
+    const ids = async (q: string) =>
+      (await s.app.inject({ url: `/api/leave-requests${q}` })).json<LeaveRequest[]>().map((r) => r.id);
+    expect(await ids(`?department=${encodeURIComponent("아동사업부")}`)).toEqual([b, a]);
+    expect(await ids(`?category=${encodeURIComponent("정규직")}`)).toEqual([c]);
+    // 휴가원 작성 뒤 소속이 바뀌면 지금 소속으로
+    execute(s.db, "UPDATE employees SET department = '지역센터' WHERE id = ?", [s.emp]);
+    expect(await ids(`?department=${encodeURIComponent("지역센터")}`)).toEqual([c, b, a]);
+    expect(await ids("?limit=2")).toEqual([c, b]);
+    expect(await ids("?limit=2&offset=2")).toEqual([a]);
+    expect(await ids("?limit=2&offset=3")).toEqual([]);
+    expect((await s.app.inject({ url: "/api/leave-requests?limit=0" })).statusCode).toBe(400);
+    expect((await s.app.inject({ url: "/api/leave-requests?limit=2&offset=-1" })).statusCode).toBe(400);
+  });
+
   it("상세: 없으면 404", async () => {
     const s = await setup();
     const res = await s.app.inject({ url: "/api/leave-requests/999" });

@@ -1,19 +1,15 @@
 // 휴가원·달력·부재자 조회 (키는 qk 기준)
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { mergeLeavePeriods } from "@leave-flow/shared";
 import type { Absences, CalendarEvent, DocStatus, LeavePrintData, LeaveRequest, WorkSchedule } from "@leave-flow/shared";
 import { api, qs } from "../../lib/api.ts";
 import { qk } from "../../lib/queries.ts";
 
-/** 달력 일정 + 휴가원에 저장된 신청(수정) 시점 근무 일정 (주 보기에서 날마다 나눌 때 사용) */
-type ScheduledCalendarEvent = CalendarEvent & WorkSchedule;
-
 /** 취소된 일정도 함께 받아 화면에서 거름 (보기 전환 시 다시 부르지 않도록) */
 export function useCalendarEvents(from: string, to: string) {
   return useQuery({
     queryKey: qk.calendarEvents(from, to),
-    queryFn: () =>
-      api.get<ScheduledCalendarEvent[]>(`/api/calendar/events${qs({ from, to, includeCancelled: true })}`),
+    queryFn: () => api.get<CalendarEvent[]>(`/api/calendar/events${qs({ from, to, includeCancelled: true })}`),
     placeholderData: keepPreviousData,
   });
 }
@@ -21,7 +17,6 @@ export function useCalendarEvents(from: string, to: string) {
 export type LeaveListStatus = DocStatus | "all";
 
 interface LeaveListParams {
-  employeeId?: number | null;
   /** 기본 active */
   status?: LeaveListStatus;
   /** 항목 기간이 [from, to] 와 겹치는 휴가원 */
@@ -31,11 +26,34 @@ interface LeaveListParams {
 
 /** 휴가원 목록 (첫 항목 시작 내림차순) */
 export function useLeaveRequests(params: LeaveListParams) {
-  const p = { employeeId: params.employeeId ?? null, status: params.status ?? "active", from: params.from, to: params.to };
+  const p = { status: params.status ?? "active", from: params.from, to: params.to };
   return useQuery({
     queryKey: qk.leaveRequests(p),
     queryFn: () => api.get<LeaveRequest[]>(`/api/leave-requests${qs(p)}`),
     placeholderData: keepPreviousData,
+  });
+}
+
+/** 달력 필터 항목별 휴가원 (기간 제한 없이 최근 것부터). 한 번에 LEAVE_PAGE 개씩 더 불러옴 */
+export const LEAVE_PAGE = 10;
+
+export interface LeavePagedParams {
+  employeeId?: number;
+  /** 직원의 지금 소속·구분 */
+  department?: string;
+  category?: string;
+  status: LeaveListStatus;
+}
+
+export function useLeaveRequestPages(params: LeavePagedParams) {
+  return useInfiniteQuery({
+    queryKey: qk.leaveRequests({ ...params, paged: true }),
+    // 다음 쪽이 있는지 알도록 하나 더 받음
+    queryFn: ({ pageParam }) =>
+      api.get<LeaveRequest[]>(`/api/leave-requests${qs({ ...params, limit: LEAVE_PAGE + 1, offset: pageParam })}`),
+    initialPageParam: 0,
+    getNextPageParam: (last, pages) => (last.length > LEAVE_PAGE ? pages.length * LEAVE_PAGE : undefined),
+    select: (data) => data.pages.flatMap((page) => page.slice(0, LEAVE_PAGE)),
   });
 }
 

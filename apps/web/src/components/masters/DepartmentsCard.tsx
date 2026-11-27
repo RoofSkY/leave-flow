@@ -33,8 +33,10 @@ export function DepartmentsCard() {
   const refresh = () =>
     Promise.all([
       qc.invalidateQueries({ queryKey: qk.departments() }),
-      // 이름을 바꾸면 직원 소속도 바뀜
+      // 이름을 바꾸면 직원 소속, 휴가 종류 적용 대상, 달력 필터에 쓰는 일정의 소속도 바뀜
       qc.invalidateQueries({ queryKey: ["employees"] }),
+      qc.invalidateQueries({ queryKey: ["leave-types"] }),
+      qc.invalidateQueries({ queryKey: ["calendar-events"] }),
     ]);
 
   const add = useMutation({
