@@ -25,7 +25,7 @@ import { execute, queryAll, queryOne, toNullableNum, toNum, transaction, type Db
 import { badRequest, conflict, notFound } from "../lib/errors.ts";
 import { parseInput } from "../lib/http.ts";
 import { writeAudit } from "./audit.ts";
-import { recordPrint } from "./printLog.ts";
+import { recordPrint } from "./print.ts";
 import { employeeTargetInfo, getEmployee, getLeaveType, getOvertimeRequest, overtimeFromRow } from "./queries.ts";
 
 /** 적립 부여 내역의 비고 (일반은 근무시간을 붙임) */

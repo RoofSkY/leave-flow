@@ -28,7 +28,7 @@ import {
   warningItemsOf,
 } from "../services/leaveRequests.ts";
 import { byDateJson, itemUsage } from "../services/leaveUsage.ts";
-import { recordPrint } from "../services/printLog.ts";
+import { recordPrint } from "../services/print.ts";
 import { deleteLeaveRequest } from "../services/purge.ts";
 import { getEmployee, getLeaveRequest, getLeaveRequests } from "../services/queries.ts";
 
