@@ -148,6 +148,44 @@
   cursor: not-allowed;
 }
 
+/* 날짜와 시각을 한 칸으로: "2026. 11. 26. | 13:00" */
+.dt-box {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.dt-box:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.dt-box:has([aria-invalid="true"]) {
+  border-color: var(--danger);
+}
+.dt-box .input,
+.dt-box .input:focus {
+  min-height: 30px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.dt-box .date-input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+.dt-box .time-input,
+.dt-box .time-input:focus {
+  flex: none;
+  width: 68px;
+  min-width: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
 /* 직원 여러 명 고르기 (EmployeeMultiSelect) */
 .emp-multi {
   display: flex;

@@ -27,7 +27,7 @@ import {
 import { execute, parseJson, queryAll, queryOne, type Db } from "../db/index.ts";
 import { badRequest } from "../lib/errors.ts";
 import { getEmployeeBalances } from "./balances.ts";
-import { byDateJson, computeItemUsage } from "./leaveUsage.ts";
+import { byDateJson, computeItemUsage, withManualMinutes } from "./leaveUsage.ts";
 import { employeeTargetInfo, getEmployee, listLeaveTypes, typeLabelSql } from "./queries.ts";
 
 export const ZERO_MINUTES_MESSAGE = "선택한 기간에 휴가로 계산되는 근무시간이 없습니다.";
@@ -40,6 +40,8 @@ interface EvaluatedItem {
   input: LeaveRequestItemInput;
   type: LeaveType | null;
   usage: LeaveUsage | null;
+  /** 기간으로 계산한 사용 시간 (직접 입력이 없으면 usage.minutes 와 같음) */
+  computedMinutes: number;
   error: string | null;
 }
 
@@ -58,7 +60,7 @@ export function evaluateItems(
   const employee = employeeTargetInfo(db, employeeId);
   return items.map((input) => {
     const type = types.get(input.leaveTypeId) ?? null;
-    const fail = (error: string): EvaluatedItem => ({ input, type, usage: null, error });
+    const fail = (error: string): EvaluatedItem => ({ input, type, usage: null, computedMinutes: 0, error });
     if (!type) return fail("휴가 종류를 찾을 수 없습니다.");
     if (!type.active && !allowInactive.has(type.id)) return fail(`사용하지 않는 휴가 종류입니다. (${type.name})`);
     if (!leaveTypeAppliesTo(type, employee) && !allowInactive.has(type.id)) {
@@ -66,9 +68,14 @@ export function evaluateItems(
     }
     const rangeError = validateLeaveRange(input.startAt, input.endAt, schedule);
     if (rangeError) return fail(rangeError);
-    const usage = computeItemUsage(db, input.startAt, input.endAt, schedule);
-    if (usage.minutes === 0) return fail(ZERO_MINUTES_MESSAGE);
-    return { input, type, usage, error: null };
+    const computed = computeItemUsage(db, input.startAt, input.endAt, schedule);
+    // 직접 입력한 사용 시간이 있으면 계산값이 0이어도 그 값으로
+    if (input.manualMinutes != null) {
+      const usage = withManualMinutes(computed, input.manualMinutes, input.startAt.slice(0, 10));
+      return { input, type, usage, computedMinutes: computed.minutes, error: null };
+    }
+    if (computed.minutes === 0) return fail(ZERO_MINUTES_MESSAGE);
+    return { input, type, usage: computed, computedMinutes: computed.minutes, error: null };
   });
 }
 
@@ -347,6 +354,7 @@ export function buildPreview(
   return {
     items: evaluated.map((e) => ({
       minutes: e.usage?.minutes ?? 0,
+      computedMinutes: e.computedMinutes,
       minutesByYear: e.usage?.byYear ?? {},
       error: e.error,
     })),
@@ -363,8 +371,8 @@ export function insertItems(db: Db, requestId: number, evaluated: readonly Evalu
     execute(
       db,
       `INSERT INTO leave_request_items (request_id, leave_type_id, start_at, end_at, minutes, minutes_by_year,
-         minutes_by_date, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         minutes_by_date, manual_minutes, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         requestId,
         e.input.leaveTypeId,
@@ -373,6 +381,7 @@ export function insertItems(db: Db, requestId: number, evaluated: readonly Evalu
         e.usage!.minutes,
         JSON.stringify(e.usage!.byYear),
         byDateJson(e.usage!.byDate),
+        e.input.manualMinutes ?? null,
         idx,
       ],
     );

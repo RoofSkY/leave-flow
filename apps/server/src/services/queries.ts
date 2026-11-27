@@ -188,6 +188,7 @@ function leaveItemFromRow(r: Row): LeaveRequestItem {
     endAt: String(r.end_at),
     minutes: toNum(r.minutes),
     minutesByYear: parseJson<Record<string, number>>(r.minutes_by_year, {}),
+    manualMinutes: r.manual_minutes == null ? null : toNum(r.manual_minutes),
   };
 }
 

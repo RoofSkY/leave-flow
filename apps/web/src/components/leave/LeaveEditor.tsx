@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  LEAVE_STEP_MINUTES,
   WEEKDAY_LABELS,
   dayMinutesOf,
   distinctLeaveTypeLabels,
@@ -26,6 +27,7 @@ import { Link } from "react-router";
 import { EmployeeFilterInline, NO_FILTER, filterMatches } from "../form/EmployeeFilter.tsx";
 import { DateInput, LeaveTypeSelect, PhoneInput, TimeSelect } from "../form/index.tsx";
 import { FieldGroup } from "../masters/inputs.tsx";
+import { LeaveAmountInput } from "../masters/LeaveAmountInput.tsx";
 import {
   Badge,
   Button,
@@ -57,6 +59,8 @@ interface ItemDraft {
   startTime: string;
   endDate: string;
   endTime: string;
+  /** 직접 입력한 사용 시간(분). null = 기간으로 계산 */
+  manualMinutes: number | null;
 }
 
 interface Draft {
@@ -80,7 +84,16 @@ const QUICK: [QuickRange, string][] = [
 
 let itemSeq = 0;
 function newItem(partial: Partial<ItemDraft> = {}): ItemDraft {
-  return { key: ++itemSeq, leaveTypeId: null, startDate: "", startTime: "", endDate: "", endTime: "", ...partial };
+  return {
+    key: ++itemSeq,
+    leaveTypeId: null,
+    startDate: "",
+    startTime: "",
+    endDate: "",
+    endTime: "",
+    manualMinutes: null,
+    ...partial,
+  };
 }
 
 function isComplete(it: ItemDraft): boolean {
@@ -93,8 +106,20 @@ function isComplete(it: ItemDraft): boolean {
   );
 }
 
+/** 직접 입력한 사용 시간이 저장할 수 있는 값인지 (0일 포함, 10분 단위) */
+const manualValid = (m: number) => m >= 0 && m % LEAVE_STEP_MINUTES === 0;
+
+/** 직접 입력을 시작할 값: 계산값 (반차 가운데 시각처럼 10분 단위가 아니면 가까운 10분 단위로) */
+const roundToStep = (m: number) => Math.max(LEAVE_STEP_MINUTES, Math.round(m / LEAVE_STEP_MINUTES) * LEAVE_STEP_MINUTES);
+
 function toInput(it: ItemDraft) {
-  return { leaveTypeId: it.leaveTypeId!, startAt: `${it.startDate}T${it.startTime}`, endAt: `${it.endDate}T${it.endTime}` };
+  return {
+    leaveTypeId: it.leaveTypeId!,
+    startAt: `${it.startDate}T${it.startTime}`,
+    endAt: `${it.endDate}T${it.endTime}`,
+    // 입력 중인 잘못된 값은 미리보기에 보내지 않음 (계산값으로 보임, 저장은 막음)
+    manualMinutes: it.manualMinutes !== null && manualValid(it.manualMinutes) ? it.manualMinutes : null,
+  };
 }
 
 /** 직원을 고르면 비어 있는 시각은 근무시간으로 채우고, 근무시간 밖 시각은 안으로 당김 */
@@ -176,6 +201,7 @@ function initialDraft(target: EditorTarget, types: LeaveType[]): Draft {
           startTime: i.startAt.slice(11, 16),
           endDate: i.endAt.slice(0, 10),
           endTime: i.endAt.slice(11, 16),
+          manualMinutes: i.manualMinutes,
         }),
       ),
       reason: r.reason,
@@ -197,7 +223,7 @@ function initialDraft(target: EditorTarget, types: LeaveType[]): Draft {
         endTime: p?.endTime ?? "",
       }),
     ],
-    reason: "개인일정",
+    reason: "",
     emergencyContact: "",
     handoverNote: "",
     noDeduct: false,
@@ -420,6 +446,11 @@ function EditorForm({
       toast(`${missing + 1}번째 항목의 휴가 종류와 기간을 모두 입력하세요.`, "error");
       return;
     }
+    const badManual = draft.items.findIndex((it) => it.manualMinutes !== null && !manualValid(it.manualMinutes));
+    if (badManual >= 0) {
+      toast(`${badManual + 1}번째 항목의 사용 시간을 10분 단위로 입력하세요.`, "error");
+      return;
+    }
     if (!draft.reason.trim()) {
       toast("휴가사유를 입력하세요.", "error");
       return;
@@ -466,15 +497,23 @@ function EditorForm({
   };
 
   const itemResult = (it: ItemDraft, idx: number) => {
-    if (!employee) return <span className="faint">직원을 선택하면 사용 시간을 계산합니다.</span>;
     if (!isComplete(it)) return <span className="faint">휴가 종류와 기간을 입력하세요.</span>;
     const p = previewItem(idx);
     if (!p) return <span className="faint">계산 중…</span>;
     if (p.error) return <span className="lf-err">{p.error}</span>;
+    const manual = it.manualMinutes !== null;
     return (
-      <span>
-        사용 시간 <strong>{fmt(p.minutes)}</strong>
-      </span>
+      <>
+        {/* 직접 입력 중이면 계산값은 지운 줄로 */}
+        <span className={manual ? "lf-computed" : undefined} title={manual ? "기간으로 계산한 사용 시간" : undefined}>
+          사용 시간 <strong>{fmt(p.computedMinutes)}</strong>
+        </span>
+        {!manual && (
+          <Button size="sm" onClick={() => setItem(it.key, { manualMinutes: roundToStep(p.computedMinutes) })}>
+            직접 입력
+          </Button>
+        )}
+      </>
     );
   };
 
@@ -557,22 +596,20 @@ function EditorForm({
                         </div>
                         <div className="lf-quick" role="group" aria-label={`${n}번째 항목 빠른 선택`}>
                           {QUICK.map(([range, label]) => {
-                            const q = employee ? quickRangeTimes(employee, range) : null;
+                            const q = quickRangeTimes(employee, range);
                             const multiDay = isDateString(it.endDate) && it.endDate !== it.startDate;
                             const halfOnMultiDay = range !== "full" && multiDay;
-                            const on = !!q && !halfOnMultiDay && it.startTime === q.start && it.endTime === q.end;
+                            const on = !halfOnMultiDay && it.startTime === q.start && it.endTime === q.end;
                             return (
                               <button
                                 key={range}
                                 type="button"
                                 aria-pressed={on}
-                                disabled={!employee || !isDateString(it.startDate) || halfOnMultiDay}
+                                disabled={!isDateString(it.startDate) || halfOnMultiDay}
                                 title={
-                                  !employee
-                                    ? "직원을 먼저 선택하세요."
-                                    : halfOnMultiDay
-                                      ? "여러 날 항목에는 종일만 쓸 수 있습니다. 반차는 시작일과 종료일을 같게 하세요."
-                                      : undefined
+                                  halfOnMultiDay
+                                    ? "여러 날 항목에는 종일만 쓸 수 있습니다. 반차는 시작일과 종료일을 같게 하세요."
+                                    : undefined
                                 }
                                 onClick={() => applyQuick(it.key, range)}
                               >
@@ -598,47 +635,69 @@ function EditorForm({
                       <div className="lf-item-range">
                         <div className="lf-dt">
                           <span className="lf-dt-label">시작</span>
-                          <DateInput
-                            value={it.startDate}
-                            ariaLabel={`${n}번째 항목 시작일`}
-                            onChange={(v) =>
-                              setItem(it.key, (cur) => ({
-                                startDate: v,
-                                endDate: cur.endDate === cur.startDate || v > cur.endDate ? v : cur.endDate,
-                              }))
-                            }
-                          />
-                          <TimeSelect
-                            value={it.startTime}
-                            options={times}
-                            disabled={!employee}
-                            ariaLabel={`${n}번째 항목 시작 시각`}
-                            onChange={(v) => setItem(it.key, { startTime: v })}
-                          />
+                          <div className="dt-box">
+                            <DateInput
+                              value={it.startDate}
+                              ariaLabel={`${n}번째 항목 시작일`}
+                              onChange={(v) =>
+                                setItem(it.key, (cur) => ({
+                                  startDate: v,
+                                  endDate: cur.endDate === cur.startDate || v > cur.endDate ? v : cur.endDate,
+                                }))
+                              }
+                            />
+                            <TimeSelect
+                              value={it.startTime}
+                              options={times}
+                              ariaLabel={`${n}번째 항목 시작 시각`}
+                              onChange={(v) => setItem(it.key, { startTime: v })}
+                            />
+                          </div>
                           {dateFlag(it.startDate)}
                         </div>
                         <span className="lf-tilde">~</span>
                         <div className="lf-dt">
                           <span className="lf-dt-label">종료</span>
-                          <DateInput
-                            value={it.endDate}
-                            min={it.startDate || undefined}
-                            ariaLabel={`${n}번째 항목 종료일`}
-                            onChange={(v) => setItem(it.key, { endDate: v })}
-                          />
-                          <TimeSelect
-                            value={it.endTime}
-                            options={times}
-                            disabled={!employee}
-                            ariaLabel={`${n}번째 항목 종료 시각`}
-                            onChange={(v) => setItem(it.key, { endTime: v })}
-                          />
+                          <div className="dt-box">
+                            <DateInput
+                              value={it.endDate}
+                              min={it.startDate || undefined}
+                              ariaLabel={`${n}번째 항목 종료일`}
+                              onChange={(v) => setItem(it.key, { endDate: v })}
+                            />
+                            <TimeSelect
+                              value={it.endTime}
+                              options={times}
+                              ariaLabel={`${n}번째 항목 종료 시각`}
+                              onChange={(v) => setItem(it.key, { endTime: v })}
+                            />
+                          </div>
                           {it.endDate !== it.startDate && dateFlag(it.endDate)}
                         </div>
                       </div>
                       <div className={["lf-item-result", stale && "lf-stale"].filter(Boolean).join(" ")}>
                         {itemResult(it, idx)}
                       </div>
+                      {it.manualMinutes !== null && (
+                        <div className="lf-item-manual">
+                          <span className="lf-dt-label">직접 입력</span>
+                          <LeaveAmountInput
+                            value={it.manualMinutes}
+                            dayMinutes={dayMinutesOf(employee)}
+                            invalid={!manualValid(it.manualMinutes)}
+                            ariaLabel={`${n}번째 항목 사용 시간`}
+                            onChange={(m) => setItem(it.key, { manualMinutes: m })}
+                          />
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            title="계산한 사용 시간으로 되돌림"
+                            onClick={() => setItem(it.key, { manualMinutes: null })}
+                          >
+                            취소
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -652,7 +711,6 @@ function EditorForm({
             />
 
             <PreviewPanel
-              hasEmployee={!!employee}
               preview={preview?.data ?? null}
               stale={stale}
               error={previewError}
@@ -697,14 +755,12 @@ function EditorForm({
 }
 
 function PreviewPanel({
-  hasEmployee,
   preview,
   stale,
   error,
   typeById,
   dayMinutes,
 }: {
-  hasEmployee: boolean;
   preview: LeavePreview | null;
   stale: boolean;
   error: unknown;
@@ -726,9 +782,7 @@ function PreviewPanel({
         <span className="section-title">이번 사용 · 잔여</span>
         {year && <span className="muted">{year}년 기준</span>}
       </div>
-      {!hasEmployee ? (
-        <span className="muted">직원을 선택하면 휴가 종류별 잔여를 보여 줍니다.</span>
-      ) : error ? (
+      {error ? (
         <ErrorText error={error} />
       ) : !preview ? (
         <Spinner label="계산 중" />

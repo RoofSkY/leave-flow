@@ -234,4 +234,13 @@ CREATE TABLE settings (
 ALTER TABLE leave_requests ADD COLUMN no_deduct INTEGER NOT NULL DEFAULT 0 CHECK (no_deduct IN (0, 1));
 `,
   },
+  {
+    version: 3,
+    name: "leave_item_manual_minutes",
+    sql: `
+-- 직접 입력한 사용 시간(분). NULL = 계산값을 씀. 있으면 minutes = 이 값이고, 연도별·날짜별은 계산값 비율로 나눔.
+-- 공휴일 재계산·복구에도 합계는 그대로
+ALTER TABLE leave_request_items ADD COLUMN manual_minutes INTEGER;
+`,
+  },
 ];

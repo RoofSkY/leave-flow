@@ -110,6 +110,51 @@ describe("휴가원 작성", () => {
     expect(s.audits("create")).toHaveLength(1);
   });
 
+  it("직접 입력한 사용 시간: 그 값으로 저장(0일 포함), 연도별은 계산값 비율로 나눔, 복구해도 유지, 10분 단위가 아니면 400", async () => {
+    const s = await setup();
+    // 12/31(목)·1/1(금)·1/4(월) = 계산 3일(1440분) → 600분을 200분씩
+    const item = { leaveTypeId: s.annual, startAt: "2026-12-31T10:00", endAt: "2027-01-04T19:00" };
+    const preview = await s.app.inject({
+      method: "POST",
+      url: "/api/leave-requests/preview",
+      payload: { employeeId: s.emp, items: [{ ...item, manualMinutes: 600 }] },
+    });
+    expect(preview.json<LeavePreview>().items[0]).toMatchObject({
+      minutes: 600,
+      computedMinutes: 1440,
+      minutesByYear: { "2026": 200, "2027": 400 },
+    });
+    const { request } = await s.createOk([{ ...item, manualMinutes: 600 } as typeof item]);
+    expect(request.items[0]).toMatchObject({ minutes: 600, manualMinutes: 600, minutesByYear: { "2026": 200, "2027": 400 } });
+    expect(request.totalMinutes).toBe(600);
+
+    // 휴무일만 고른 항목도 직접 입력하면 저장 (시작일에 모두)
+    insertHoliday(s.db, { date: "2026-10-05", name: "센터 휴무", kind: "center" });
+    const closed = { leaveTypeId: s.annual, startAt: "2026-10-05T10:00", endAt: "2026-10-05T19:00", manualMinutes: 240 };
+    const { request: onHoliday } = await s.createOk([closed as typeof item]);
+    expect(onHoliday.items[0]).toMatchObject({ minutes: 240, minutesByYear: { "2026": 240 } });
+
+    // 취소 → 공휴일 추가 → 복구해도 직접 입력한 합계 그대로
+    await s.app.inject({ method: "POST", url: `/api/leave-requests/${request.id}/cancel` });
+    insertHoliday(s.db, { date: "2027-01-01", name: "신정" });
+    const restored = await s.app.inject({ method: "POST", url: `/api/leave-requests/${request.id}/restore` });
+    expect(restored.json<LeaveSaveResult>().request.items[0]).toMatchObject({
+      minutes: 600,
+      manualMinutes: 600,
+      minutesByYear: { "2026": 300, "2027": 300 },
+    });
+
+    // 0일도 됨 (연도별 사용 없음)
+    const zero = { leaveTypeId: s.annual, startAt: "2026-10-07T10:00", endAt: "2026-10-07T19:00", manualMinutes: 0 };
+    const { request: none } = await s.createOk([zero as typeof item]);
+    expect(none.items[0]).toMatchObject({ minutes: 0, manualMinutes: 0, minutesByYear: {} });
+
+    const bad = await s.create([{ ...item, manualMinutes: 15 } as typeof item]);
+    expect(bad.statusCode).toBe(400);
+    const negative = await s.create([{ ...item, manualMinutes: -10 } as typeof item]);
+    expect(negative.statusCode).toBe(400);
+  });
+
   it("근무 일정 검사: 근무 요일·근무시간·10분 단위 (여러 항목이면 몇 번째인지)", async () => {
     const s = await setup();
     const cases: [string, string, string][] = [

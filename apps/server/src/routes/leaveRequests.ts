@@ -26,7 +26,7 @@ import {
   scheduleOf,
   warningItemsOf,
 } from "../services/leaveRequests.ts";
-import { byDateJson, computeItemUsage } from "../services/leaveUsage.ts";
+import { byDateJson, itemUsage } from "../services/leaveUsage.ts";
 import { recordPrint } from "../services/printLog.ts";
 import { deleteLeaveRequest } from "../services/purge.ts";
 import { getEmployee, getLeaveRequest, getLeaveRequests } from "../services/queries.ts";
@@ -280,14 +280,15 @@ export function registerLeaveRequestRoutes(app: FastifyInstance, ctx: AppContext
       const now = ctx.now();
       const zeroWarnings: Warning[] = [];
       const items = before.items.map((item, idx) => {
-        const usage = computeItemUsage(db, item.startAt, item.endAt, schedule);
+        const usage = itemUsage(db, item.startAt, item.endAt, schedule, item.manualMinutes);
         execute(db, "UPDATE leave_request_items SET minutes = ?, minutes_by_year = ?, minutes_by_date = ? WHERE id = ?", [
           usage.minutes,
           JSON.stringify(usage.byYear),
           byDateJson(usage.byDate),
           item.id,
         ]);
-        if (usage.minutes === 0) {
+        // 직접 0으로 입력한 항목은 일부러 0이므로 알리지 않음
+        if (usage.minutes === 0 && item.manualMinutes === null) {
           zeroWarnings.push({
             code: "zero_minutes",
             message: `${idx + 1}번째 항목(${item.leaveTypeName} ${formatPeriod(item.startAt, item.endAt)})은 사용 시간이 0입니다. 공휴일·휴무일을 확인하세요.`,

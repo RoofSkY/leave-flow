@@ -42,21 +42,19 @@ export function TimeSelect({
   value,
   onChange,
   options,
-  disabled,
   invalid,
   ariaLabel,
 }: {
   value: string;
   onChange: (v: string) => void;
   options: readonly string[];
-  disabled?: boolean;
   invalid?: boolean;
   ariaLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
   const [typedError, setTypedError] = useState(false);
-  const [pos, setPos] = useState<{ left: number; top: number; above: boolean } | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const popId = useId();
@@ -76,7 +74,7 @@ export function TimeSelect({
     const height = popRef.current?.offsetHeight ?? 240;
     const above = r.bottom + POPOVER_GAP + height > window.innerHeight && r.top - POPOVER_GAP - height > 0;
     const left = Math.max(8, Math.min(r.left, window.innerWidth - POPOVER_WIDTH - 8));
-    setPos({ left, top: above ? r.top - POPOVER_GAP - height : r.bottom + POPOVER_GAP, above });
+    setPos({ left, top: above ? r.top - POPOVER_GAP - height : r.bottom + POPOVER_GAP });
   };
 
   useLayoutEffect(() => {
@@ -173,7 +171,6 @@ export function TimeSelect({
         placeholder="--:--"
         inputMode="numeric"
         autoComplete="off"
-        disabled={disabled}
         aria-label={ariaLabel}
         aria-invalid={invalid || typedError || undefined}
         aria-haspopup="dialog"
@@ -193,7 +190,6 @@ export function TimeSelect({
         onKeyDown={onKeyDown}
       />
       {open &&
-        !disabled &&
         createPortal(
           <div
             ref={popRef}

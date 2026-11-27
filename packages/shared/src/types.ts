@@ -168,6 +168,8 @@ export interface LeaveRequestItem {
   endAt: string;
   minutes: number;
   minutesByYear: Record<string, number>;
+  /** 직접 입력한 사용 시간(분). 있으면 minutes = 이 값, null = 기간으로 계산한 값 */
+  manualMinutes: number | null;
 }
 
 export interface LeaveRequest {
@@ -212,8 +214,10 @@ export interface Warning {
 }
 
 interface LeavePreviewItem {
-  /** 오류가 있으면 minutes = 0, error에 메시지 */
+  /** 오류가 있으면 minutes = 0, error에 메시지. 직접 입력한 값이 있으면 그 값 */
   minutes: number;
+  /** 기간으로 계산한 사용 시간 (직접 입력과 견주어 보여 줌) */
+  computedMinutes: number;
   minutesByYear: Record<string, number>;
   error: string | null;
 }

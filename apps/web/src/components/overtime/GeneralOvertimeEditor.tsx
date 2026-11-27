@@ -201,14 +201,18 @@ export function GeneralOvertimeEditor({
           <div className="ot-period">
             <div className="ot-when">
               <span className="ot-when-label">시작</span>
-              <DateInput value={startDate} onChange={changeStartDate} ariaLabel="근무 시작일" invalid={!!shown.period} />
-              <TimeSelect value={startTime} onChange={setStartTime} options={TIMES} ariaLabel="근무 시작 시각" invalid={!!shown.period} />
+              <div className="dt-box">
+                <DateInput value={startDate} onChange={changeStartDate} ariaLabel="근무 시작일" invalid={!!shown.period} />
+                <TimeSelect value={startTime} onChange={setStartTime} options={TIMES} ariaLabel="근무 시작 시각" invalid={!!shown.period} />
+              </div>
             </div>
             <span className="ot-period-sep">~</span>
             <div className="ot-when">
               <span className="ot-when-label">종료</span>
-              <DateInput value={endDate} onChange={setEndDate} min={startDate} ariaLabel="근무 종료일" invalid={!!shown.period} />
-              <TimeSelect value={endTime} onChange={setEndTime} options={TIMES} ariaLabel="근무 종료 시각" invalid={!!shown.period} />
+              <div className="dt-box">
+                <DateInput value={endDate} onChange={setEndDate} min={startDate} ariaLabel="근무 종료일" invalid={!!shown.period} />
+                <TimeSelect value={endTime} onChange={setEndTime} options={TIMES} ariaLabel="근무 종료 시각" invalid={!!shown.period} />
+              </div>
             </div>
           </div>
         </FieldGroup>

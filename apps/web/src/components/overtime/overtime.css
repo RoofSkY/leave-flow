@@ -167,8 +167,8 @@
   align-items: center;
   gap: 6px;
 }
-.ot-when .input {
-  width: 150px;
+.ot-when .dt-box {
+  width: 210px;
 }
 .ot-when-label {
   font-size: 13px;

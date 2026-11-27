@@ -88,6 +88,42 @@ describe("POST /api/holidays", () => {
     expect(String(recalc[0]!.summary)).toContain("센터 휴무일 2026.10.28. 체육대회 추가");
   });
 
+  it("직접 입력 항목: 합계는 그대로, 날짜별 배분만 다시 저장 (재계산 목록·이력 없음)", async () => {
+    const { app, db, emp, type } = await setup();
+    // 10/26 ~ 10/30 5일에 직접 입력 600분 → 하루 120분
+    const rid = insertLeave(db, emp, type, "2026-10-26T10:00", "2026-10-30T19:00", 600);
+    const days = ["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30"];
+    execute(db, "UPDATE leave_request_items SET manual_minutes = 600, minutes_by_date = ? WHERE request_id = ?", [
+      JSON.stringify(Object.fromEntries(days.map((d) => [d, 120]))),
+      rid,
+    ]);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/holidays",
+      payload: { date: "2026-10-28", name: "체육대회", kind: "center" },
+    });
+    expect(res.statusCode).toBe(201);
+    const row = queryOne<{ minutes: number; minutes_by_date: string }>(
+      db,
+      "SELECT minutes, minutes_by_date FROM leave_request_items WHERE request_id = ?",
+      [rid],
+    )!;
+    expect(Number(row.minutes)).toBe(600);
+    // 10/28 이 빠지고 남은 4일에 150분씩
+    expect(JSON.parse(row.minutes_by_date)).toEqual({
+      "2026-10-26": 150,
+      "2026-10-27": 150,
+      "2026-10-29": 150,
+      "2026-10-30": 150,
+    });
+    const ids = (res.json() as HolidayChangeResult).recalculated.map((c) => c.requestId);
+    expect(ids).not.toContain(rid);
+    expect(
+      queryAll(db, "SELECT * FROM audit_logs WHERE action = 'recalculate' AND entity_id = ?", [rid]),
+    ).toEqual([]);
+  });
+
   it("영향받는 휴가원이 없으면 recalculated 는 빈 배열", async () => {
     const { app } = await setup();
     const res = await app.inject({

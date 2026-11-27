@@ -314,6 +314,14 @@ const leaveRequestItemInput = z.object({
   leaveTypeId: idSchema,
   startAt: dateTimeString,
   endAt: dateTimeString,
+  /** 직접 입력한 사용 시간(분, 0 이상 10분 단위). 없으면 기간으로 계산 */
+  manualMinutes: z
+    .number({ error: "사용 시간을 숫자로 입력하세요." })
+    .int("사용 시간은 10분 단위로 입력하세요.")
+    .min(0, "사용 시간은 0 이상이어야 합니다.")
+    .refine((v) => v % LEAVE_STEP_MINUTES === 0, "사용 시간은 10분 단위로 입력하세요.")
+    .nullable()
+    .optional(),
 });
 export type LeaveRequestItemInput = z.infer<typeof leaveRequestItemInput>;
 

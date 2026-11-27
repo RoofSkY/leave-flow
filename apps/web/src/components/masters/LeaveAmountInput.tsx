@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { splitLeaveMinutes } from "@leave-flow/shared";
 import { AmountBox } from "./inputs.tsx";
 import "./masters.css";
@@ -28,10 +28,17 @@ export function LeaveAmountInput({
   invalid?: boolean;
   ariaLabel?: string;
 }) {
-  // 입력 중인 칸이 비어 있어도 그대로 보이도록 칸별 값을 따로 둠
+  // 입력 중인 칸이 비어 있어도 그대로 보이도록 칸별 값을 따로 둠. draftDay = 칸 값을 적을 때의 1일
   const [draft, setDraft] = useState<Draft>(() => split(value, dayMinutes));
+  const [draftDay, setDraftDay] = useState(dayMinutes);
+  // 1일이 바뀌면 (직원을 고르거나 바꿈) 적은 일·시간·분은 그대로 두고 새 1일로 다시 셈 (총 부여량 칸과 같게)
+  useEffect(() => {
+    if (draftDay === dayMinutes) return;
+    setDraftDay(dayMinutes);
+    onChange(total(draft, dayMinutes));
+  }, [dayMinutes]); // 1일이 바뀔 때만
   // 바깥에서 값이 바뀌면 (수정 창 열기 등) 칸을 다시 채움
-  if (total(draft, dayMinutes) !== value) setDraft(split(value, dayMinutes));
+  if (total(draft, draftDay) !== value) setDraft(split(value, draftDay));
   const emit = (next: Draft) => {
     setDraft(next);
     onChange(total(next, dayMinutes));

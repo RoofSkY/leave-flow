@@ -1,7 +1,7 @@
 import { dayMinutesOf, formatPeriod, type RecalcChange } from "@leave-flow/shared";
 import { execute, parseJson, queryAll, toNum, transaction, type Db } from "../db/index.ts";
 import { writeAudit } from "./audit.ts";
-import { byDateJson, computeItemUsage } from "./leaveUsage.ts";
+import { byDateJson, itemUsage } from "./leaveUsage.ts";
 
 /**
  * 공휴일·휴무일이 바뀐 뒤, 아직 끝나지 않은 휴가원을 다시 계산.
@@ -19,7 +19,7 @@ export function recalcFutureRequests(
   return transaction(db, () => {
     const rows = queryAll(
       db,
-      `SELECT i.id, i.request_id, i.start_at, i.end_at, i.minutes, i.minutes_by_year,
+      `SELECT i.id, i.request_id, i.start_at, i.end_at, i.minutes, i.minutes_by_year, i.minutes_by_date, i.manual_minutes,
               r.employee_id, r.employee_name, r.work_days, r.work_start, r.work_end,
               t.name AS type_name
          FROM leave_request_items i
@@ -38,17 +38,25 @@ export function recalcFutureRequests(
         workStart: String(r.work_start),
         workEnd: String(r.work_end),
       };
-      const usage = computeItemUsage(db, String(r.start_at), String(r.end_at), schedule);
+      // 직접 입력한 항목은 합계는 그대로, 연도별·날짜별만 다시 나눔
+      const manual = r.manual_minutes == null ? null : toNum(r.manual_minutes);
+      const usage = itemUsage(db, String(r.start_at), String(r.end_at), schedule, manual);
       const before = toNum(r.minutes);
       const beforeByYear = String(r.minutes_by_year);
       const afterByYear = JSON.stringify(usage.byYear);
-      if (usage.minutes === before && afterByYear === beforeByYear) continue;
+      const afterByDate = byDateJson(usage.byDate);
+      if (usage.minutes === before && afterByYear === beforeByYear) {
+        // 직접 입력 항목은 합계가 그대로라 같은 해 안에서는 날짜별 배분만 바뀜 → 사용 시간 변경이 아니므로 목록·이력 없이 저장
+        if (afterByDate !== String(r.minutes_by_date)) {
+          execute(db, "UPDATE leave_request_items SET minutes_by_date = ? WHERE id = ?", [afterByDate, toNum(r.id)]);
+        }
+        continue;
+      }
 
-      // 날짜별이 바뀌면 그 날의 근무 분이 빠지거나 더해지므로 합·연도별도 바뀜 → 위 비교로 충분
       execute(db, "UPDATE leave_request_items SET minutes = ?, minutes_by_year = ?, minutes_by_date = ? WHERE id = ?", [
         usage.minutes,
         afterByYear,
-        byDateJson(usage.byDate),
+        afterByDate,
         toNum(r.id),
       ]);
       const change: RecalcChange = {
