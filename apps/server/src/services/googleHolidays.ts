@@ -7,13 +7,13 @@ import { writeAudit } from "./audit.ts";
 import { holidayFromRow } from "./queries.ts";
 import { recalcFutureRequests } from "./recalc.ts";
 
-export const GOOGLE_HOLIDAY_ICS_URL =
+const GOOGLE_HOLIDAY_ICS_URL =
   "https://calendar.google.com/calendar/ical/ko.south_korea%23holiday%40group.v.calendar.google.com/public/basic.ics";
 const FETCH_TIMEOUT_MS = 10_000;
 /** holidayInput 의 이름 최대 길이 */
 const NAME_MAX = 50;
 
-export interface IcsHoliday {
+interface IcsHoliday {
   date: string;
   name: string;
 }

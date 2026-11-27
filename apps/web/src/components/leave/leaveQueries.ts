@@ -35,9 +35,9 @@ export function useLeaveRequests(params: LeaveListParams) {
 }
 
 /** 달력 필터 항목별 휴가원 (기간 제한 없이 최근 것부터). 한 번에 LEAVE_PAGE 개씩 더 불러옴 */
-export const LEAVE_PAGE = 10;
+const LEAVE_PAGE = 10;
 
-export interface LeavePagedParams {
+interface LeavePagedParams {
   employeeId?: number;
   /** 직원의 지금 소속·구분 */
   department?: string;

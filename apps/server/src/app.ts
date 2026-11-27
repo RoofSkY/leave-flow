@@ -65,7 +65,7 @@ export function checkApiRequest(
   if (host !== undefined) {
     const name = hostnameOf(host);
     if (!(isIP(name) !== 0 || name === "localhost" || allowedHosts.has(name))) {
-      return { status: 403, error: "허용되지 않은 주소로 접속했습니다. 출결 PC의 IP 주소로 접속하세요." };
+      return { status: 403, error: "허용되지 않은 주소로 접속했습니다. 서버 PC의 IP 주소로 접속하세요." };
     }
   }
 

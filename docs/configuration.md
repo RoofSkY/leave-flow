@@ -24,7 +24,7 @@ powershell -ExecutionPolicy Bypass -File .\update-config.ps1 -Port 8090
 
 | 항목                   | 뜻                                                                    | 기본값            |
 | ---------------------- | --------------------------------------------------------------------- | ----------------- |
-| `port`                 | 접속 포트 (5000 사용 불가)                                            | `8082`            |
+| `port`                 | 접속 포트                                                             | `8082`            |
 | `nasBackupDir`         | NAS 백업 폴더. JSON에서는 `\`를 두 번 씀 (`"\\\\NAS주소\\backup"`)    | `null`            |
 | `backupTime`           | 자동 백업 시각 `"HH:MM"`                                              | `"12:30"`         |
 | `backupKeepDays`       | 백업 보관 일수 (로컬·NAS)                                             | `30`              |

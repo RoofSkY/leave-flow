@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/index.ts",
-    "build": "node build.mjs",
-    "start": "node --disable-warning=ExperimentalWarning dist/server.mjs"
+    "build": "node build.mjs"
   },
   "dependencies": {
     "@fastify/static": "^10.1.6",

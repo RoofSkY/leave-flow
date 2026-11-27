@@ -77,7 +77,6 @@ $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
   Fail "관리자 권한이 필요합니다. install.cmd 를 더블클릭하거나, PowerShell 을 '관리자 권한으로 실행'한 뒤 다시 실행하세요."
 }
-if ($Port -eq 5000) { Fail "5000번 포트는 같은 PC의 auto-ansimtalk 가 사용하므로 쓸 수 없습니다." }
 if ($Port -lt 1 -or $Port -gt 65535) { Fail "포트 번호가 올바르지 않습니다: $Port" }
 if (-not $InstallDir) {
   $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
@@ -173,7 +172,6 @@ if (Test-Path $configPath) {
   Write-Json $configPath $config
   Ok "config.json 을 만들었습니다. (포트 $Port)"
 }
-if ($Port -eq 5000) { Fail "config.json 의 포트가 5000번입니다. auto-ansimtalk 와 겹치므로 다른 포트로 바꾸세요." }
 
 $listening = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($listening) {

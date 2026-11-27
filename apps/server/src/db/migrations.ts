@@ -190,7 +190,6 @@ CREATE TABLE print_logs (
 );
 CREATE INDEX print_logs_doc ON print_logs (doc_type, doc_id);
 
--- 법정공휴일(public) + 센터 휴무일(center). source: auto = 라이브러리 자동 등록, manual = 관리자 입력
 CREATE TABLE holidays (
   id         INTEGER PRIMARY KEY,
   date       TEXT    NOT NULL,
@@ -249,6 +248,22 @@ ALTER TABLE leave_request_items ADD COLUMN manual_minutes INTEGER;
     sql: `
 -- 출력 기록 표는 쓰기만 하고 읽는 곳이 없었음. 최근 출력일시는 문서의 last_printed_at, 출력 이력은 audit_logs(action = print)
 DROP TABLE print_logs;
+`,
+  },
+  {
+    version: 5,
+    name: "reset_auto_holidays",
+    sql: `
+-- 예전 버전은 date-holidays 라이브러리로 공휴일을 자동 등록했는데 음력 날짜가 틀린 경우가 있었음.
+-- 올해 이후의 자동 등록분을 지우고 서버를 켤 때 구글 캘린더에서 다시 가져옴.
+-- 관리자가 지운 자동 등록분(active = 0)은 남겨서 다시 가져오지 않게 하고, 직접 추가한 것도 그대로 둠
+INSERT INTO audit_logs (at, entity, action, summary)
+SELECT strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'), 'holiday', 'delete',
+       '예전 자동 등록 공휴일 ' || COUNT(*) || '건 삭제 (구글 캘린더에서 다시 가져옴)'
+FROM holidays
+WHERE source = 'auto' AND active = 1 AND date >= strftime('%Y-01-01', 'now', 'localtime')
+HAVING COUNT(*) > 0;
+DELETE FROM holidays WHERE source = 'auto' AND active = 1 AND date >= strftime('%Y-01-01', 'now', 'localtime');
 `,
   },
 ];

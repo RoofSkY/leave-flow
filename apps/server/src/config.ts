@@ -2,9 +2,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { isTimeString } from "@leave-flow/shared";
 
-// 5000번은 같은 PC의 auto-ansimtalk가 사용하므로 금지
 const DEFAULT_PORT = 8082;
-const FORBIDDEN_PORTS = new Set([5000]);
 
 export interface Config {
   /** 설치 폴더 (config.json, data/, backups/ 가 있는 곳) */
@@ -89,9 +87,6 @@ export function loadConfig(
   const port = Number(env.LEAVE_FLOW_PORT ?? file.port ?? DEFAULT_PORT);
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {
     throw new Error(`포트 값이 올바르지 않습니다: ${port}`);
-  }
-  if (FORBIDDEN_PORTS.has(port)) {
-    throw new Error(`${port}번 포트는 auto-ansimtalk가 사용 중이라 쓸 수 없습니다.`);
   }
 
   const backupTime = file.backupTime ?? "12:30";

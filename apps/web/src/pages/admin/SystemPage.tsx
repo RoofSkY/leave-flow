@@ -268,7 +268,7 @@ export function SystemPage() {
             {timedOut ? (
               <div className="stack">
                 <span>
-                  서버가 아직 다시 시작되지 않았습니다. 잠시 뒤 새로고침하세요. 계속 접속되지 않으면 출결 PC의
+                  서버가 아직 다시 시작되지 않았습니다. 잠시 뒤 새로고침하세요. 계속 접속되지 않으면 서버 PC의
                   leave-flow 로그(설치 폴더\logs)를 확인하세요.
                 </span>
                 <div>

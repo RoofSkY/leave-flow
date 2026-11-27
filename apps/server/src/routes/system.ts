@@ -77,7 +77,7 @@ export function registerSystemRoutes(
     if (dir) {
       const error = await checkWritableDir(dir);
       if (error) {
-        throw badRequest(`NAS 백업 폴더에 쓸 수 없습니다: ${error} (주소, 공유폴더 쓰기 권한, 출결 PC에 로그인한 Windows 계정을 확인하세요)`);
+        throw badRequest(`NAS 백업 폴더에 쓸 수 없습니다: ${error} (주소, 공유폴더 쓰기 권한, 서버 PC에 로그인한 Windows 계정을 확인하세요)`);
       }
     }
     const before = ctx.config.nasBackupDir;

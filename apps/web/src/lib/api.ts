@@ -23,7 +23,7 @@ async function send(method: string, url: string, body?: unknown): Promise<Respon
       body: body === undefined ? undefined : file ? body : JSON.stringify(body),
     });
   } catch {
-    throw new ApiRequestError(0, "서버에 연결할 수 없습니다. 출결 PC가 켜져 있는지 확인하세요.");
+    throw new ApiRequestError(0, "서버에 연결할 수 없습니다. 서버 PC가 켜져 있는지 확인하세요.");
   }
   if (!res.ok) {
     let message = `요청을 처리하지 못했습니다. (${res.status})`;

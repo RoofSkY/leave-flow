@@ -271,7 +271,7 @@ describe("다른 사이트·주소에서 온 API 요청 차단", () => {
     for (const host of ["evil.example", "evil.example:8080", "attacker.lan."]) {
       const res = await app.inject({ method: "GET", url: "/api/health", headers: { host } });
       expect(res.statusCode, host).toBe(403);
-      expect(res.json().error).toContain("출결 PC의 IP 주소");
+      expect(res.json().error).toContain("서버 PC의 IP 주소");
     }
   });
 
