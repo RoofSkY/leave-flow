@@ -189,8 +189,6 @@ export type LeaveTypeInput = z.infer<typeof leaveTypeInput>;
  * 시간은 소수로 10분 단위까지 받음 (분 없이 시간만 보내는 가져오기 스크립트용).
  */
 const grantAmountFields = {
-  leaveTypeId: idSchema,
-  grantDate: dateString,
   days: z
     .number({ error: "부여량(일)을 숫자로 입력하세요." })
     .int("부여량(일)은 정수로 입력하세요.")
@@ -208,26 +206,43 @@ const grantAmountFields = {
     .max(99999, "부여량(분)이 너무 큽니다.")
     .refine((m) => m % LEAVE_STEP_MINUTES === 0, "부여량(분)은 10분 단위로 입력하세요.")
     .default(0),
-  note: trimmed(200, "비고"),
 };
 const grantAmountPositive = (v: { days: number; hours: number; minutes: number }) =>
   v.days > 0 || v.hours > 0 || v.minutes > 0;
 const GRANT_AMOUNT_REQUIRED = { error: "부여량을 입력하세요.", path: ["days"] };
 
-export const grantInput = z.object({ employeeId: idSchema, ...grantAmountFields }).refine(grantAmountPositive, GRANT_AMOUNT_REQUIRED);
-export type GrantInput = z.infer<typeof grantInput>;
-
-/** 여러 직원에게 같은 부여를 한 번에 (직원마다 그 사람의 1일로 계산) */
-export const grantBulkInput = z
+export const grantInput = z
   .object({
-    employeeIds: z
-      .array(idSchema, { error: "직원을 선택하세요." })
-      .min(1, "직원을 한 명 이상 선택하세요.")
-      .max(200, "한 번에 200명까지 부여할 수 있습니다.")
-      .refine((ids) => new Set(ids).size === ids.length, "같은 직원이 중복 선택되었습니다."),
+    employeeId: idSchema,
+    leaveTypeId: idSchema,
+    grantDate: dateString,
     ...grantAmountFields,
+    note: trimmed(200, "비고"),
   })
   .refine(grantAmountPositive, GRANT_AMOUNT_REQUIRED);
+export type GrantInput = z.infer<typeof grantInput>;
+
+/** 일괄 부여의 종류 한 줄: 종류 + 양 */
+export const grantBulkItem = z.object({ leaveTypeId: idSchema, ...grantAmountFields }).refine(grantAmountPositive, GRANT_AMOUNT_REQUIRED);
+
+/**
+ * 여러 직원 × 여러 종류를 한 번에 (종류마다 양이 다를 수 있음, 직원 × 종류마다 부여 1건).
+ * 양은 직원마다 그 사람의 1일로 계산
+ */
+export const grantBulkInput = z.object({
+  employeeIds: z
+    .array(idSchema, { error: "직원을 선택하세요." })
+    .min(1, "직원을 한 명 이상 선택하세요.")
+    .max(200, "한 번에 200명까지 부여할 수 있습니다.")
+    .refine((ids) => new Set(ids).size === ids.length, "같은 직원이 중복 선택되었습니다."),
+  items: z
+    .array(grantBulkItem, { error: "휴가 종류를 선택하세요." })
+    .min(1, "휴가 종류를 하나 이상 넣으세요.")
+    .max(30, "한 번에 30종류까지 부여할 수 있습니다.")
+    .refine((items) => new Set(items.map((i) => i.leaveTypeId)).size === items.length, "같은 휴가 종류가 중복되었습니다."),
+  grantDate: dateString,
+  note: trimmed(200, "비고"),
+});
 export type GrantBulkInput = z.infer<typeof grantBulkInput>;
 
 /** 영구 삭제: 기록이 있으면 확인용으로 이름을 그대로 입력 */

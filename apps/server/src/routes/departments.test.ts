@@ -131,7 +131,12 @@ describe("여러 직원 일괄 부여", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/grants/bulk",
-      payload: { employeeIds: [a, b], leaveTypeId: annual, grantDate: "2026-01-01", days: 15, hours: 0, note: "2026년 연차" },
+      payload: {
+        employeeIds: [a, b],
+        items: [{ leaveTypeId: annual, days: 15, hours: 0 }],
+        grantDate: "2026-01-01",
+        note: "2026년 연차",
+      },
     });
     expect(res.statusCode).toBe(201);
     expect(res.json()).toHaveLength(2);
@@ -157,7 +162,12 @@ describe("여러 직원 일괄 부여", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/grants/bulk",
-      payload: { employeeIds: [full, part], leaveTypeId: annual, grantDate: "2026-01-01", days: 15, hours: 2, note: "" },
+      payload: {
+        employeeIds: [full, part],
+        items: [{ leaveTypeId: annual, days: 15, hours: 2 }],
+        grantDate: "2026-01-01",
+        note: "",
+      },
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().map((g: { minutes: number }) => g.minutes)).toEqual([15 * 480 + 120, 15 * 300 + 120]);
@@ -175,21 +185,77 @@ describe("여러 직원 일괄 부여", () => {
     const missing = await app.inject({
       method: "POST",
       url: "/api/grants/bulk",
-      payload: { employeeIds: [a, 999], leaveTypeId: annual, grantDate: "2026-01-01", days: 0, hours: 1, note: "" },
+      payload: { employeeIds: [a, 999], items: [{ leaveTypeId: annual, days: 0, hours: 1 }], grantDate: "2026-01-01", note: "" },
     });
     expect(missing.statusCode).toBe(400);
     const dup = await app.inject({
       method: "POST",
       url: "/api/grants/bulk",
-      payload: { employeeIds: [a, a], leaveTypeId: annual, grantDate: "2026-01-01", days: 0, hours: 1, note: "" },
+      payload: { employeeIds: [a, a], items: [{ leaveTypeId: annual, days: 0, hours: 1 }], grantDate: "2026-01-01", note: "" },
     });
     expect(dup.statusCode).toBe(400);
     const none = await app.inject({
       method: "POST",
       url: "/api/grants/bulk",
-      payload: { employeeIds: [], leaveTypeId: annual, grantDate: "2026-01-01", days: 0, hours: 1, note: "" },
+      payload: { employeeIds: [], items: [{ leaveTypeId: annual, days: 0, hours: 1 }], grantDate: "2026-01-01", note: "" },
     });
     expect(none.json().error).toBe("직원을 한 명 이상 선택하세요.");
+    const sameType = await app.inject({
+      method: "POST",
+      url: "/api/grants/bulk",
+      payload: {
+        employeeIds: [a],
+        items: [
+          { leaveTypeId: annual, days: 1, hours: 0 },
+          { leaveTypeId: annual, days: 2, hours: 0 },
+        ],
+        grantDate: "2026-01-01",
+        note: "",
+      },
+    });
+    expect(sameType.json().error).toBe("같은 휴가 종류가 중복되었습니다.");
+    const noItems = await app.inject({
+      method: "POST",
+      url: "/api/grants/bulk",
+      payload: { employeeIds: [a], items: [], grantDate: "2026-01-01", note: "" },
+    });
+    expect(noItems.json().error).toBe("휴가 종류를 하나 이상 넣으세요.");
     expect(queryAll(db, "SELECT * FROM leave_grants")).toHaveLength(before);
+  });
+
+  it("여러 종류를 종류마다 다른 양으로 한 번에 (직원 × 종류마다 1건)", async () => {
+    const { app, db } = await createTestApp();
+    const a = insertEmployee(db, { name: "홍길동" });
+    const b = insertEmployee(db, { name: "김영희" });
+    const annual = insertLeaveType(db, { name: "연차" });
+    const special = insertLeaveType(db, { name: "특별휴가" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/grants/bulk",
+      payload: {
+        employeeIds: [a, b],
+        items: [
+          { leaveTypeId: annual, days: 15, hours: 0 },
+          { leaveTypeId: special, days: 0, hours: 3, minutes: 30 },
+        ],
+        grantDate: "2026-01-01",
+        note: "2026년",
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(
+      res.json().map((g: { employeeId: number; leaveTypeId: number; minutes: number; note: string }) => [
+        g.employeeId,
+        g.leaveTypeId,
+        g.minutes,
+        g.note,
+      ]),
+    ).toEqual([
+      [a, annual, 7200, "2026년"],
+      [a, special, 210, "2026년"],
+      [b, annual, 7200, "2026년"],
+      [b, special, 210, "2026년"],
+    ]);
+    expect(queryAll(db, "SELECT * FROM audit_logs WHERE entity = 'leave_grant'")).toHaveLength(4);
   });
 });

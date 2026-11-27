@@ -90,6 +90,34 @@
   width: 80px;
 }
 
+/* 부여 추가: 종류마다 [종류][일][시간][분][✕] 한 줄 */
+.grant-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.grant-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.grant-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.grant-item-type {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.grant-item-row .amount-input {
+  flex-wrap: nowrap;
+  flex: none;
+}
+.grant-item-row .amount-input .amount-box {
+  width: 60px;
+}
+
 /* 잔여 요약 */
 .balance-summary {
   display: grid;

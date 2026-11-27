@@ -41,7 +41,11 @@ function mustGetManual(ctx: AppContext, id: number): Grant {
  * 입력의 직원·종류 확인. 새로 만들거나 종류를 바꿀 때는 그 직원에게 적용되는 활성 종류여야 함
  * (수정 시 원래 종류가 비활성이거나 대상에서 빠졌어도 그대로 두는 것은 허용).
  */
-function resolveRefs(ctx: AppContext, input: GrantInput, keepTypeId: number | null): { employee: Employee; type: LeaveType } {
+function resolveRefs(
+  ctx: AppContext,
+  input: Pick<GrantInput, "employeeId" | "leaveTypeId">,
+  keepTypeId: number | null,
+): { employee: Employee; type: LeaveType } {
   const employee = getEmployee(ctx.db, input.employeeId);
   if (!employee) throw badRequest("직원을 찾을 수 없습니다.");
   const type = getLeaveType(ctx.db, input.leaveTypeId);
@@ -122,36 +126,38 @@ export function registerGrantRoutes(app: FastifyInstance, ctx: AppContext): void
     return reply.status(201).send(created);
   });
 
-  // 여러 직원에게 같은 부여를 한 번에 (직원마다 부여 내역 1건, 변경 이력도 직원마다)
+  // 여러 직원 × 여러 종류를 한 번에 (직원 × 종류마다 부여 내역 1건, 변경 이력도 1건씩)
   app.post("/grants/bulk", async (req, reply) => {
     const input = parseInput(grantBulkInput, req.body);
     const created = transaction(db, () => {
       const now = ctx.now();
       const ip = clientIp(req);
-      return input.employeeIds.map((employeeId) => {
-        const { employee, type } = resolveRefs(ctx, { ...input, employeeId }, null);
-        const id = execute(
-          db,
-          `INSERT INTO leave_grants (employee_id, leave_type_id, grant_date, minutes, note, source, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, 'manual', ?, ?)`,
-          [employee.id, type.id, input.grantDate, grantMinutes(input, employee), input.note, now, now],
-        ).lastInsertRowid;
-        const g = getGrant(ctx, id)!;
-        writeAudit(
-          db,
-          ip,
-          {
-            entity: "leave_grant",
-            entityId: id,
-            employeeId: employee.id,
-            action: "create",
-            summary: `${employee.name} ${type.name} 부여 (${amountText(g, employee)}, ${input.employeeIds.length}명 일괄)`,
-            after: g,
-          },
-          now,
-        );
-        return g;
-      });
+      return input.employeeIds.flatMap((employeeId) =>
+        input.items.map((item) => {
+          const { employee, type } = resolveRefs(ctx, { employeeId, leaveTypeId: item.leaveTypeId }, null);
+          const id = execute(
+            db,
+            `INSERT INTO leave_grants (employee_id, leave_type_id, grant_date, minutes, note, source, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, 'manual', ?, ?)`,
+            [employee.id, type.id, input.grantDate, grantMinutes(item, employee), input.note, now, now],
+          ).lastInsertRowid;
+          const g = getGrant(ctx, id)!;
+          writeAudit(
+            db,
+            ip,
+            {
+              entity: "leave_grant",
+              entityId: id,
+              employeeId: employee.id,
+              action: "create",
+              summary: `${employee.name} ${type.name} 부여 (${amountText(g, employee)}, ${input.employeeIds.length}명 일괄)`,
+              after: g,
+            },
+            now,
+          );
+          return g;
+        }),
+      );
     });
     return reply.status(201).send(created);
   });

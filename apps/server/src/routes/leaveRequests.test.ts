@@ -1247,7 +1247,12 @@ describe("적용 대상 직원을 정한 휴가 종류", () => {
     const bulk = await s.app.inject({
       method: "POST",
       url: "/api/grants/bulk",
-      payload: { ...grant, employeeIds: [s.other, s.emp] },
+      payload: {
+        employeeIds: [s.other, s.emp],
+        items: [{ leaveTypeId: s.special, days: 1, hours: 0 }],
+        grantDate: grant.grantDate,
+        note: "",
+      },
     });
     expect(bulk.statusCode).toBe(400);
     expect(queryAll(s.db, "SELECT * FROM leave_grants WHERE leave_type_id = ?", [s.special])).toEqual([]);
