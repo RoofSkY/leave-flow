@@ -5,10 +5,11 @@ import {
   type BalanceOpening,
   type BalanceRow,
   type BalanceUsage,
+  type Employee,
 } from "@leave-flow/shared";
-import { parseJson, queryAll, toNum, type Db } from "../db/index.ts";
+import { parseJson, queryAll, queryOne, toNum, type Db } from "../db/index.ts";
 import { parseByDate } from "./leaveUsage.ts";
-import { employeeTargetInfo, listLeaveTypes } from "./queries.ts";
+import { employeeTargetInfo, listEmployees, listLeaveTypes } from "./queries.ts";
 
 export interface BalanceOptions {
   /** 이 휴가원은 사용량에서 제외 (수정·복구 중인 휴가원의 미리보기·경고) */
@@ -125,5 +126,29 @@ export function getEmployeeBalances(
     openings,
     [...usages, ...(opts.extraUsage ?? [])],
     { date: opts.date, today: opts.today },
+  );
+}
+
+/** 그 해 부여·기존 잔여·사용(신청 상태 휴가원) 기록이 있는지 */
+const HAS_RECORDS_IN_YEAR = `SELECT (
+  EXISTS (SELECT 1 FROM leave_grants WHERE employee_id = :id AND substr(grant_date, 1, 4) = :year)
+  OR EXISTS (SELECT 1 FROM opening_balances WHERE employee_id = :id AND year = :yearNum)
+  OR EXISTS (
+    SELECT 1 FROM leave_request_items i JOIN leave_requests r ON r.id = i.request_id
+     WHERE r.employee_id = :id AND r.status = 'active' AND json_extract(i.minutes_by_year, :path) > 0
+  )
+) AS has_records`;
+
+/** 그 해 사용 현황·관리대장 엑셀의 잔여내역에 넣을 직원: 활성 직원 + 그 해 기록이 있는 비활성 직원 */
+export function listReportEmployees(db: Db, year: number): Employee[] {
+  return listEmployees(db, { includeInactive: true }).filter(
+    (e) =>
+      e.active ||
+      queryOne<{ has_records: number }>(db, HAS_RECORDS_IN_YEAR, {
+        id: e.id,
+        year: String(year),
+        yearNum: year,
+        path: `$."${year}"`,
+      })?.has_records === 1,
   );
 }

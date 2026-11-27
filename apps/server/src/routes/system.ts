@@ -1,15 +1,15 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { nasBackupDirInput, tableExportInput, type SystemInfo } from "@leave-flow/shared";
+import { nasBackupDirInput, type SystemInfo } from "@leave-flow/shared";
 import { saveConfigValue } from "../config.ts";
 import type { AppContext } from "../context.ts";
 import { transaction } from "../db/index.ts";
 import { badRequest } from "../lib/errors.ts";
-import { clientIp, parseInput } from "../lib/http.ts";
+import { clientIp, parseInput, queryInt } from "../lib/http.ts";
 import { writeAudit } from "../services/audit.ts";
 import { checkWritableDir, createBackup, listBackups, prepareRestore, prepareUploadRestore } from "../services/backup.ts";
-import { buildExportWorkbook, buildTableWorkbook } from "../services/excelExport.ts";
+import { buildLedgerWorkbook } from "../services/excelExport.ts";
 import { SYSTEM_KEYS, getValue, setValue } from "../services/settings.ts";
 import {
   applyUpdate,
@@ -31,7 +31,7 @@ const restoreInput = z.object({
 });
 
 /**
- * 시스템: 버전·업데이트, 백업·복구, 엑셀 내려받기. docs/api.md 참고.
+ * 시스템: 버전·업데이트, 백업·복구, 휴가원 관리대장 엑셀. docs/api.md 참고.
  * requestExit(code): 서버를 종료시켜 launcher 가 재시작하게 함 (업데이트 적용 = 75, 백업 복구 = 76)
  */
 export function registerSystemRoutes(
@@ -132,28 +132,17 @@ export function registerSystemRoutes(
     });
   });
 
-  app.get("/export.xlsx", async (_req, reply) => {
-    const buffer = await buildExportWorkbook(ctx.db, ctx.today());
-    const filename = `leave-flow-${ctx.today().replaceAll("-", "")}.xlsx`;
+  // 휴가원 관리대장 엑셀: GET /api/export.xlsx?year= (없으면 올해)
+  app.get("/export.xlsx", async (req, reply) => {
+    const year = queryInt(req.query, "year") ?? Number(ctx.today().slice(0, 4));
+    if (year < 2000 || year > 2100) throw badRequest("연도 값이 올바르지 않습니다.");
+    const buffer = await buildLedgerWorkbook(ctx.db, year, ctx.today());
+    const filename = `${year} 휴가원 관리대장.xlsx`;
     return reply
       .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
       .header(
         "Content-Disposition",
-        `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
-      )
-      .header("Cache-Control", "no-store")
-      .send(buffer);
-  });
-
-  // 화면 표(잔여 현황·사용 현황)를 엑셀로: 화면이 보낸 표 그대로 만듦
-  app.post("/export/table.xlsx", async (req, reply) => {
-    const input = parseInput(tableExportInput, req.body);
-    const buffer = await buildTableWorkbook(input);
-    return reply
-      .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-      .header(
-        "Content-Disposition",
-        `attachment; filename="table.xlsx"; filename*=UTF-8''${encodeURIComponent(`${input.title}.xlsx`)}`,
+        `attachment; filename="leave-flow-${year}.xlsx"; filename*=UTF-8''${encodeURIComponent(filename)}`,
       )
       .header("Cache-Control", "no-store")
       .send(buffer);

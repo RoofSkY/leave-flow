@@ -1,10 +1,4 @@
-import { useState } from "react";
-import type { TableExportInput } from "@leave-flow/shared";
-import { Button, useToast } from "../ui/index.tsx";
-import { downloadFile, errorMessage } from "../../lib/api.ts";
-
-/** 엑셀로 받을 표: 화면에 보이는 그대로 (머리글 칸은 HTML 표처럼 colSpan·rowSpan) */
-export type ReportTable = Pick<TableExportInput, "head" | "body">;
+import { Button } from "../ui/index.tsx";
 
 /**
  * 이 화면이 열려 있을 때만 적용되는 인쇄 규칙: A4 가로, 메뉴·도구줄 숨김, 표 전체가 나오게 스크롤·고정 칸 해제.
@@ -27,39 +21,13 @@ const PRINT_CSS = `
 }
 `;
 
-/** 잔여 현황·사용 현황의 [인쇄] [엑셀로 받기]. table 이 null 이면(불러오는 중·빈 표) 누를 수 없음 */
-export function ReportActions({
-  title,
-  subtitle,
-  table,
-}: {
-  title: string;
-  subtitle: string;
-  table: ReportTable | null;
-}) {
-  const [busy, setBusy] = useState(false);
-  const toast = useToast();
-
-  const download = async () => {
-    if (!table) return;
-    setBusy(true);
-    try {
-      await downloadFile("/api/export/table.xlsx", { title, subtitle, ...table }, `${title}.xlsx`);
-    } catch (err) {
-      toast(errorMessage(err), "error");
-    } finally {
-      setBusy(false);
-    }
-  };
-
+/** 잔여 현황·사용 현황의 [인쇄]. disabled: 불러오는 중·빈 표 */
+export function ReportActions({ disabled }: { disabled: boolean }) {
   return (
     <>
       <style>{PRINT_CSS}</style>
-      <Button onClick={() => window.print()} disabled={!table}>
+      <Button onClick={() => window.print()} disabled={disabled}>
         인쇄
-      </Button>
-      <Button onClick={download} disabled={!table || busy}>
-        {busy ? "만드는 중…" : "엑셀로 받기"}
       </Button>
     </>
   );

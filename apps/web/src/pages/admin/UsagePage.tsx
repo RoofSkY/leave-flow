@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
+  balanceScopeText,
   dayMinutesOf,
   formatDotDate,
   formatLeaveMinutes,
@@ -10,8 +11,7 @@ import {
   type LeaveType,
   type UsageReport,
 } from "@leave-flow/shared";
-import { balanceScopeText } from "../../components/masters/labels.ts";
-import { ReportActions, ReportPrintHeader, type ReportTable } from "../../components/admin-reports/ReportExport.tsx";
+import { ReportActions, ReportPrintHeader } from "../../components/admin-reports/ReportExport.tsx";
 import { YearSelect } from "../../components/admin-reports/YearSelect.tsx";
 import "../../components/admin-reports/admin-reports.css";
 import { Badge, ColorDot, EmptyState, ErrorText, PageHeader, Spinner } from "../../components/ui/index.tsx";
@@ -36,31 +36,6 @@ function amountsOf(b: BalanceRow | undefined) {
   return { granted, used, remaining: b?.remainingMinutes ?? granted - used };
 }
 
-/** 엑셀로 받을 표: 화면과 같은 열 (차감 종류는 부여·사용·잔여, 차감 안 하는 종류는 사용) */
-function usageTable(report: UsageReport): ReportTable {
-  const head: ReportTable["head"] = [
-    [
-      { text: "직원", rowSpan: 2 },
-      { text: "소속", rowSpan: 2 },
-      ...report.leaveTypes.map((t) => ({ text: `${t.name}\n${typeMeta(t, report.year)}`, colSpan: t.deducts ? 3 : 1 })),
-    ],
-    report.leaveTypes.flatMap((t) => (t.deducts ? ["부여", "사용", "잔여"] : ["사용"]).map((text) => ({ text }))),
-  ];
-  const body = report.rows.map(({ employee, balances }) => {
-    const f = (m: number) => formatLeaveMinutes(m, dayMinutesOf(employee));
-    const byType = new Map(balances.map((b) => [b.leaveTypeId, b]));
-    return [
-      employee.active ? employee.name : `${employee.name} (비활성)`,
-      employee.department,
-      ...report.leaveTypes.flatMap((t) => {
-        const a = amountsOf(byType.get(t.id));
-        return t.deducts ? [f(a.granted), f(a.used), f(a.remaining)] : [f(a.used)];
-      }),
-    ];
-  });
-  return { head, body };
-}
-
 export function UsagePage() {
   const [year, setYear] = useState(currentYear);
   const usage = useQuery({
@@ -77,11 +52,7 @@ export function UsagePage() {
         title="사용 현황"
         description="직원별·휴가 종류별 부여·사용·잔여입니다. 연도별 종류는 그 해, 누적 종류는 그 해까지의 합계입니다."
         actions={
-          <ReportActions
-            title={reportTitle}
-            subtitle={reportSubtitle}
-            table={report && report.leaveTypes.length && report.rows.length ? usageTable(report) : null}
-          />
+          <ReportActions disabled={!(report && report.leaveTypes.length && report.rows.length)} />
         }
       />
       <ReportPrintHeader title={reportTitle} subtitle={reportSubtitle} />

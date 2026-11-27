@@ -2,17 +2,19 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
+  balanceScopeText,
+  columnBalances,
   dayMinutesOf,
   formatDotDate,
   formatLeaveMinutes,
-  leaveTypeLabel,
+  leaveTypeColumns,
   localToday,
   type BalanceRow,
   type LeaveType,
+  type LeaveTypeColumn,
   type UsageReport,
 } from "@leave-flow/shared";
-import { balanceScopeText } from "../components/masters/labels.ts";
-import { ReportActions, ReportPrintHeader, type ReportTable } from "../components/admin-reports/ReportExport.tsx";
+import { ReportActions, ReportPrintHeader } from "../components/admin-reports/ReportExport.tsx";
 import { YearSelect } from "../components/admin-reports/YearSelect.tsx";
 import { EmployeeFilter, NO_FILTER, filterMatches, type EmployeeFilterValue } from "../components/form/EmployeeFilter.tsx";
 import { Checkbox, ColorDot, EmptyState, ErrorText, PageHeader, Spinner, TextInput } from "../components/ui/index.tsx";
@@ -21,81 +23,7 @@ import { currentYear } from "../lib/format.ts";
 import { qk } from "../lib/queries.ts";
 import "./BalancesPage.css";
 
-/** 열 하나 = 표시 이름이 같은 휴가 종류 묶음 (예: 연차(직원)·연차(강사) → "연차") */
-interface Column {
-  label: string;
-  types: LeaveType[];
-  /** 묶음의 계산 범위가 모두 같으면 머리글에, 다르면 칸마다 표시 */
-  scope: string | null;
-}
-
-/** 보이는 이름이 같은 종류끼리 한 열로 (한 직원에게는 그중 하나만 적용됨). 표시 순서 유지 */
-function columnsOf(types: readonly LeaveType[], scopeOf: (t: LeaveType) => string): Column[] {
-  const columns: Column[] = [];
-  for (const t of types) {
-    const label = leaveTypeLabel(t);
-    const col = columns.find((c) => c.label === label);
-    if (col) col.types.push(t);
-    else columns.push({ label, types: [t], scope: null });
-  }
-  for (const c of columns) {
-    const scopes = new Set(c.types.map(scopeOf));
-    c.scope = scopes.size === 1 ? [...scopes][0]! : null;
-  }
-  return columns;
-}
-
-/** 이 직원의 그 열 종류들 (보통 하나, 소속·구분이 바뀐 직원은 둘 이상) */
-function rowsOfColumn(c: Column, byType: Map<number, BalanceRow>): BalanceRow[] {
-  return c.types.map((t) => byType.get(t.id)).filter((b): b is BalanceRow => b !== undefined);
-}
-
-/** 엑셀로 받을 표: 화면과 같은 열·같은 직원. 차감 종류는 잔여·부여·사용(기간이 칸마다 다르면 기간도) 칸으로 나눔 */
-function balancesTable(
-  rows: UsageReport["rows"],
-  deducting: Column[],
-  usedOnly: Column[],
-  rowScope: (row: BalanceRow) => string,
-): ReportTable {
-  const head: ReportTable["head"] = [
-    [
-      { text: "직원", rowSpan: 2 },
-      { text: "소속", rowSpan: 2 },
-      ...deducting.map((c) => (c.scope ? { text: `${c.label}\n${c.scope}`, colSpan: 3 } : { text: c.label, colSpan: 4 })),
-      ...usedOnly.map((c) => ({ text: c.label })),
-    ],
-    [
-      ...deducting.flatMap((c) => ["잔여", "부여", "사용", ...(c.scope ? [] : ["기간"])].map((text) => ({ text }))),
-      ...usedOnly.map(() => ({ text: "사용 (차감 안 함)" })),
-    ],
-  ];
-  const body = rows.map(({ employee, balances }) => {
-    const f = (m: number) => formatLeaveMinutes(m, dayMinutesOf(employee));
-    const byType = new Map(balances.map((b) => [b.leaveTypeId, b]));
-    // 같은 표시 이름의 종류가 둘 이상이면 화면처럼 관리 이름으로 나눠 줄을 바꿈
-    const lines = (list: BalanceRow[], value: (b: BalanceRow) => string) =>
-      list.length === 1 ? value(list[0]!) : list.map((b) => `${b.name} ${value(b)}`).join("\n");
-    return [
-      employee.active ? employee.name : `${employee.name} (비활성)`,
-      employee.department,
-      ...deducting.flatMap((c) => {
-        const shown = rowsOfColumn(c, byType).filter((b) => b.remainingMinutes !== null);
-        const scopeCell = c.scope ? [] : [shown.length ? lines(shown, rowScope) : ""];
-        if (shown.length === 0) return ["-", "", "", ...scopeCell];
-        return [
-          lines(shown, (b) => f(b.remainingMinutes!)),
-          lines(shown, (b) => f(b.grantedMinutes)),
-          lines(shown, (b) => f(b.usedMinutes)),
-          ...scopeCell,
-        ];
-      }),
-      ...usedOnly.map((c) => f(rowsOfColumn(c, byType).reduce((sum, b) => sum + b.usedMinutes, 0))),
-    ];
-  });
-  return { head, body };
-}
-
-/** 인쇄·엑셀 부제목에 넣을 조건: "소속 아동사업부 · 구분 직원 · 직원 홍길동" */
+/** 인쇄 부제목에 넣을 조건: "소속 아동사업부 · 구분 직원 · 직원 홍길동" */
 function filterText(filter: EmployeeFilterValue, rows: UsageReport["rows"]): string {
   const nameOf = new Map(rows.map((r) => [r.employee.id, r.employee.name]));
   const names = filter.employeeIds.map((id) => nameOf.get(id)).filter((n) => n !== undefined);
@@ -175,8 +103,8 @@ export function BalancesPage() {
   });
   const report = usage.data;
   const scopeOf = (t: LeaveType) => balanceScopeText(t, year, localToday());
-  const deducting = columnsOf(report?.leaveTypes.filter((t) => t.deducts) ?? [], scopeOf);
-  const usedOnly = columnsOf(report?.leaveTypes.filter((t) => !t.deducts) ?? [], scopeOf);
+  const deducting = leaveTypeColumns(report?.leaveTypes.filter((t) => t.deducts) ?? [], scopeOf);
+  const usedOnly = leaveTypeColumns(report?.leaveTypes.filter((t) => !t.deducts) ?? [], scopeOf);
   const typeById = new Map(report?.leaveTypes.map((t) => [t.id, t]) ?? []);
   const rowScope = (row: BalanceRow) => {
     const t = typeById.get(row.leaveTypeId);
@@ -207,11 +135,7 @@ export function BalancesPage() {
         title="잔여 현황"
         description="직원별로 휴가 종류마다 남은 양을 보여 줍니다. 연도별 종류는 그 해 기준, 누적 종류는 그 해까지 쌓인 양입니다. (1일 = 직원별 하루 근무시간)"
         actions={
-          <ReportActions
-            title={reportTitle}
-            subtitle={reportSubtitle}
-            table={rows.length ? balancesTable(rows, deducting, usedOnly, rowScope) : null}
-          />
+          <ReportActions disabled={!rows.length} />
         }
       />
       <ReportPrintHeader title={reportTitle} subtitle={reportSubtitle} />
@@ -262,7 +186,7 @@ export function BalancesPage() {
             <tbody>
               {rows.map(({ employee, balances }) => {
                 const byType = new Map(balances.map((b) => [b.leaveTypeId, b]));
-                const rowsOf = (c: Column) => rowsOfColumn(c, byType);
+                const rowsOf = (c: LeaveTypeColumn) => columnBalances(c, byType);
                 return (
                   <tr key={employee.id} className={employee.active ? undefined : "inactive"}>
                     <th scope="row" className="bal-sticky">

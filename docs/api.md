@@ -32,7 +32,7 @@
 | 공휴일·휴무일     | `GET /api/holidays?from&to&includeInactive`, `POST /api/holidays`, `DELETE …/:id`, `POST …/:id/restore`                                                                                                          |
 | 설정·소속·구분    | `GET`·`PUT /api/settings`, `/api/departments`·`/api/categories` (`GET`, `POST`, `PUT …/:id`, `DELETE …/:id`)                                                                                                      |
 | 사용 현황·이력    | `GET /api/usage?year`, `GET /api/audit-logs?from&to&entity&employeeId&action&page&pageSize`                                                                                                                       |
-| 시스템            | `GET /api/system/info`, `POST /api/system/update/check`·`/apply`, `PUT /api/system/nas-backup-dir`, `GET`·`POST /api/backups`, `POST /api/backups/restore`, `POST /api/backups/upload?name`, `GET /api/export.xlsx`, `POST /api/export/table.xlsx` |
+| 시스템            | `GET /api/system/info`, `POST /api/system/update/check`·`/apply`, `PUT /api/system/nas-backup-dir`, `GET`·`POST /api/backups`, `POST /api/backups/restore`, `POST /api/backups/upload?name`, `GET /api/export.xlsx?year` |
 
 ## 핵심 규칙
 

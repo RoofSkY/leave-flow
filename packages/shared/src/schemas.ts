@@ -462,32 +462,6 @@ export type OvertimeAwardInput = z.infer<typeof overtimeAwardInput>;
 const overtimeInput = z.union([overtimeGeneralInput, overtimeSoldierInput, overtimeAwardInput]);
 export type OvertimeInput = z.infer<typeof overtimeInput>;
 
-/** 화면 표를 엑셀로 (잔여 현황·사용 현황): 화면에 보이는 그대로 보내면 서버가 .xlsx 로 만듦 */
-const tableExportText = z.string().max(1000, "칸 내용이 너무 깁니다.");
-export const tableExportInput = z.object({
-  /** 첫 줄 제목, 시트 이름 */
-  title: trimmed(100, "제목").min(1, "제목을 입력하세요."),
-  /** 둘째 줄 (필터·출력일 등) */
-  subtitle: trimmed(500, "부제목"),
-  /** 머리글 줄들. 칸은 HTML 표처럼 colSpan·rowSpan */
-  head: z
-    .array(
-      z
-        .array(
-          z.object({
-            text: tableExportText,
-            colSpan: z.number().int().min(1).max(500).optional(),
-            rowSpan: z.number().int().min(1).max(5).optional(),
-          }),
-        )
-        .max(500),
-    )
-    .min(1)
-    .max(5),
-  body: z.array(z.array(tableExportText).max(500)).max(5000),
-});
-export type TableExportInput = z.infer<typeof tableExportInput>;
-
 export const holidayInput = z.object({
   date: dateString,
   name: trimmed(50, "이름").min(1, "이름을 입력하세요."),

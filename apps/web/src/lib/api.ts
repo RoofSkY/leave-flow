@@ -47,17 +47,6 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   return (ct.includes("application/json") ? res.json() : res.text()) as Promise<T>;
 }
 
-/** POST 로 받은 파일을 filename 으로 내려받기 (화면 표 → 엑셀) */
-export async function downloadFile(url: string, body: unknown, filename: string): Promise<void> {
-  const res = await send("POST", url, body);
-  const href = URL.createObjectURL(await res.blob());
-  const a = document.createElement("a");
-  a.href = href;
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(href), 1000);
-}
-
 /** 쿼리스트링 만들기 (undefined·null·"" 은 제외) */
 export function qs(params: Record<string, string | number | boolean | null | undefined>): string {
   const sp = new URLSearchParams();

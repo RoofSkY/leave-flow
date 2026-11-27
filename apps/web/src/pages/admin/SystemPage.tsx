@@ -12,8 +12,9 @@ import {
   useConfirm,
   useToast,
 } from "../../components/ui/index.tsx";
+import { YearSelect } from "../../components/admin-reports/YearSelect.tsx";
 import { api, errorMessage, qs } from "../../lib/api.ts";
-import { formatTimestamp } from "../../lib/format.ts";
+import { currentYear, formatTimestamp } from "../../lib/format.ts";
 import { qk } from "../../lib/queries.ts";
 import "./SystemPage.css";
 
@@ -84,6 +85,7 @@ export function SystemPage() {
   const confirm = useConfirm();
   const [restarting, setRestarting] = useState<Restarting | null>(null);
   const [timedOut, setTimedOut] = useState(false);
+  const [excelYear, setExcelYear] = useState(currentYear);
 
   const info = useQuery({
     queryKey: qk.system(),
@@ -383,15 +385,15 @@ export function SystemPage() {
 
           <section className="card system-card" aria-labelledby="system-excel">
             <h2 id="system-excel" className="section-title">
-              엑셀 백업
+              휴가원 관리대장 엑셀
             </h2>
             <p className="system-text">
-              직원, 휴가 종류, 부여 내역, 휴가원, 시간외근무 신청서, 공휴일, 사용 현황, 변경 이력 등 전체 데이터를 엑셀
-              파일(.xlsx)로 내려받습니다.
+              고른 연도의 휴가사용내역, 휴가부여내역, 잔여내역을 엑셀 파일(.xlsx)로 내려받습니다.
             </p>
             <p className="system-text muted">엑셀 파일로는 복구할 수 없습니다. 복구는 아래의 백업 파일을 사용하세요.</p>
             <div className="system-actions">
-              <a className="btn" href="/api/export.xlsx" download aria-disabled={busy || undefined}>
+              <YearSelect value={excelYear} onChange={setExcelYear} />
+              <a className="btn" href={`/api/export.xlsx${qs({ year: excelYear })}`} download aria-disabled={busy || undefined}>
                 엑셀로 내려받기
               </a>
             </div>

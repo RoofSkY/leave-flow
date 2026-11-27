@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import ExcelJS from "exceljs";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { queryAll } from "../db/index.ts";
+import { execute, queryAll } from "../db/index.ts";
 import { PENDING_RESTORE_NAME } from "../services/backup.ts";
 import { SYSTEM_KEYS, getValue } from "../services/settings.ts";
 import { readLauncherState, runAutoUpdate, writeLauncherState } from "../services/updater.ts";
@@ -16,6 +16,7 @@ import {
   insertHoliday,
   insertLeaveType,
   testConfig,
+  type TestApp,
 } from "../testing.ts";
 
 afterEach(() => {
@@ -184,94 +185,233 @@ describe("백업 복구", () => {
   });
 });
 
-describe("엑셀 내려받기", () => {
-  it("한국어 시트·열 이름, 첫 줄 굵게·고정", async () => {
-    const { app, db } = await createTestApp();
-    const emp = insertEmployee(db, { name: "홍길동", workDays: [1, 2, 3] });
-    const comp = insertLeaveType(db, { name: "대체휴가", balanceMode: "cumulative" });
-    insertGrant(db, { employeeId: emp, leaveTypeId: comp, grantDate: "2026-03-01", minutes: 150, note: "메모" });
-    insertHoliday(db, { date: "2026-10-09", name: "한글날" });
-
-    const res = await app.inject({ method: "GET", url: "/api/export.xlsx" });
-    expect(res.statusCode).toBe(200);
-    expect(res.headers["content-type"]).toContain("spreadsheetml");
-    expect(res.headers["content-disposition"]).toBe(
-      `attachment; filename="leave-flow-20261019.xlsx"; filename*=UTF-8''leave-flow-20261019.xlsx`,
+describe("휴가원 관리대장 엑셀", () => {
+  /** 시트의 줄들 (머리글 포함, 칸은 보이는 글자) */
+  const sheetRows = (ws: ExcelJS.Worksheet) =>
+    Array.from({ length: ws.rowCount }, (_, r) =>
+      Array.from({ length: ws.columnCount }, (_, c) => ws.getRow(r + 1).getCell(c + 1).text),
     );
-
+  const load = async (payload: unknown) => {
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(res.rawPayload as unknown as ExcelJS.Buffer);
-    expect(wb.worksheets.map((w) => w.name)).toEqual([
-      "직원",
-      "휴가 종류",
-      "부여 내역",
-      "기존 잔여량",
-      "휴가원",
-      "휴가원 항목",
-      "시간외근무 신청서",
-      "공휴일·휴무일",
-      "사용 현황 요약",
-      "변경 이력",
-    ]);
-    const employees = wb.getWorksheet("직원")!;
-    expect(employees.getRow(1).font?.bold).toBe(true);
-    expect(employees.views[0]).toMatchObject({ state: "frozen", ySplit: 1 });
-    expect(employees.getRow(2).getCell(5).value).toBe("월·화·수");
-    expect(employees.getRow(2).getCell(9).value).toBe("담당·센터장");
-    expect(employees.getRow(1).getCell(10).value).toBe("구분");
-    expect(employees.getRow(2).getCell(11).value).toBe("예"); // 활성
-
-    const grants = wb.getWorksheet("부여 내역")!;
-    expect(grants.getRow(1).getCell(7).value).toBe("부여량");
-    expect(grants.getRow(2).getCell(6).value).toBe(150);
-    expect(grants.getRow(2).getCell(7).value).toBe("2시간 30분");
-    expect(grants.getRow(2).getCell(9).value).toBe("직접 입력");
-
-    const usage = wb.getWorksheet("사용 현황 요약")!;
-    expect(usage.getRow(2).values).toEqual(
-      expect.arrayContaining(["홍길동", "대체휴가", "누적(2026년까지)", "2시간 30분", "0일"]),
-    );
-    expect(wb.getWorksheet("공휴일·휴무일")!.getRow(2).getCell(3).value).toBe("금");
-  });
-
-  it("화면 표 그대로: 제목·부제목, 머리글 병합(colSpan·rowSpan), 본문, A4 가로 인쇄", async () => {
-    const { app } = await createTestApp();
-    const res = await app.inject({
+    await wb.xlsx.load(payload as ExcelJS.Buffer);
+    return wb;
+  };
+  const leave = (app: TestApp["app"], employeeId: number, items: object[], extra: object = {}) =>
+    app.inject({
       method: "POST",
-      url: "/api/export/table.xlsx",
+      url: "/api/leave-requests",
+      payload: { employeeId, items, reason: "개인 사유", emergencyContact: "010-1234-5678", handoverNote: "", ...extra },
+    });
+
+  it("3개 시트(A열 소속, B열 구분): 날짜마다 1줄인 사용내역, 부여·기존 잔여·적립 부여내역, 잔여내역 표", async () => {
+    const { app, db } = await createTestApp();
+    const hong = insertEmployee(db, { name: "홍길동", department: "아동사업부", category: "직원" });
+    const annual = insertLeaveType(db, { name: "연차(직원)", sortOrder: 1 });
+    execute(db, "UPDATE leave_types SET display_name = '연차' WHERE id = ?", [annual]);
+    const comp = insertLeaveType(db, { name: "대체휴가(직원)", balanceMode: "cumulative", sortOrder: 2 });
+    execute(db, "UPDATE leave_types SET display_name = '대체휴가' WHERE id = ?", [comp]);
+    const sick = insertLeaveType(db, { name: "병가", sortOrder: 3 });
+    insertLeaveType(db, { name: "공가", deducts: false, sortOrder: 4 });
+    insertHoliday(db, { date: "2026-10-15", name: "휴무일", kind: "center" });
+
+    // 기존 잔여: 15일 중 10일 남음 (기존 사용 5일)
+    const opening = await app.inject({
+      method: "PUT",
+      url: "/api/opening-balances",
       payload: {
-        title: "2026년 잔여 현황",
-        subtitle: "출력 2026.10.19.",
-        head: [
-          [{ text: "직원", rowSpan: 2 }, { text: "소속", rowSpan: 2 }, { text: "연차\n2026년", colSpan: 3 }, { text: "공가" }],
-          [{ text: "잔여" }, { text: "부여" }, { text: "사용" }, { text: "사용" }],
-        ],
-        body: [["홍길동", "아동사업부", "3일", "15일", "12일", "1일"]],
+        employeeId: hong,
+        leaveTypeId: annual,
+        year: 2026,
+        baseDate: "2026-03-01",
+        totalGrantedMinutes: 15 * 480,
+        remainingMinutes: 10 * 480,
       },
     });
+    expect(opening.statusCode).toBeLessThan(300);
+    insertGrant(db, { employeeId: hong, leaveTypeId: comp, grantDate: "2026-02-01", minutes: 180, note: "연초 이월" });
+    // 일반 시간외근무: 첫 출력 때 적립 (부여일 = 제출일 = 오늘)
+    const overtime = await app.inject({
+      method: "POST",
+      url: "/api/overtime",
+      payload: {
+        kind: "general",
+        targets: [{ employeeId: hong, leaveTypeId: comp }],
+        workStartAt: "2026-10-10T10:00",
+        workEndAt: "2026-10-10T19:00",
+        minutes: 150,
+        cumulativeNote: "",
+        category: "special_work",
+        workDetails: "행사 준비",
+      },
+    });
+    expect(overtime.statusCode).toBe(201);
+    expect((await app.inject({ method: "POST", url: `/api/overtime/${overtime.json().id}/print` })).statusCode).toBe(200);
+
+    // 화~금 (목요일은 휴무일) / 해를 넘는 휴가 / 미차감 / 취소
+    const multi = await leave(app, hong, [{ leaveTypeId: annual, startAt: "2026-10-13T13:00", endAt: "2026-10-16T15:00" }], {
+      handoverNote: "인계 메모",
+    });
+    expect(multi.statusCode).toBe(201);
+    const crossYear = await leave(app, hong, [{ leaveTypeId: sick, startAt: "2025-12-31T10:00", endAt: "2026-01-02T19:00" }]);
+    expect(crossYear.statusCode).toBe(201);
+    const noDeduct = await leave(app, hong, [{ leaveTypeId: comp, startAt: "2026-10-20T10:00", endAt: "2026-10-20T12:00" }], {
+      noDeduct: true,
+    });
+    expect(noDeduct.statusCode).toBe(201);
+    const cancelled = await leave(app, hong, [{ leaveTypeId: annual, startAt: "2026-10-21T10:00", endAt: "2026-10-21T12:00" }]);
+    const cancel = await app.inject({ method: "POST", url: `/api/leave-requests/${cancelled.json().request.id}/cancel` });
+    expect(cancel.statusCode).toBe(200);
+
+    // 영구 삭제된 직원의 기록은 넣지 않음
+    const gone = insertEmployee(db, { name: "김삭제" });
+    insertGrant(db, { employeeId: gone, leaveTypeId: comp, grantDate: "2026-05-01", minutes: 60 });
+    execute(db, "UPDATE employees SET deleted = 1, active = 0 WHERE id = ?", [gone]);
+
+    const res = await app.inject({ method: "GET", url: "/api/export.xlsx?year=2026" });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toContain("spreadsheetml");
     expect(res.headers["content-disposition"]).toBe(
-      `attachment; filename="table.xlsx"; filename*=UTF-8''${encodeURIComponent("2026년 잔여 현황.xlsx")}`,
+      `attachment; filename="leave-flow-2026.xlsx"; filename*=UTF-8''${encodeURIComponent("2026 휴가원 관리대장.xlsx")}`,
     );
+    const wb = await load(res.rawPayload);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(["휴가사용내역", "휴가부여내역", "잔여내역"]);
+    // 양식: 머리글 굵게·회색 바탕·가운데, 본문 가운데(근무내역만 왼쪽), 모든 칸 테두리, 첫 줄 고정·필터
+    const thin = { style: "thin" };
+    for (const name of ["휴가사용내역", "휴가부여내역"]) {
+      const ws = wb.getWorksheet(name)!;
+      expect(ws.views[0]).toMatchObject({ state: "frozen", ySplit: 1 });
+      expect(ws.getCell("A1")).toMatchObject({
+        font: { name: "맑은 고딕", size: 11, bold: true },
+        fill: { pattern: "solid", fgColor: { argb: "FFF2F2F0" } },
+        alignment: { horizontal: "center", vertical: "middle" },
+        border: { top: thin, left: thin, bottom: thin, right: thin },
+      });
+      expect(ws.getCell("A2")).toMatchObject({ font: { name: "맑은 고딕", size: 11 }, alignment: { horizontal: "center" } });
+      expect(ws.getCell(2, ws.columnCount).border).toMatchObject({ top: thin, left: thin, bottom: thin, right: thin });
+    }
+    const used = wb.getWorksheet("휴가사용내역")!;
+    expect(used.columns.map((c) => c.width)).toEqual([11, 13, 9.5, 11.125, 13.25, 13.25, 13.25, 13.25, 13.25, 30.5]);
+    expect(used.getCell("J2").alignment).toMatchObject({ horizontal: "center" });
+    const granted = wb.getWorksheet("휴가부여내역")!;
+    expect(granted.columns.map((c) => c.width)).toEqual([11, 13, 9.5, 11.375, 11.25, 11.375, 13.25, 45.375]);
+    expect(granted.getCell("H1").alignment).toEqual({ vertical: "middle" });
+    expect(granted.getCell("H2").alignment?.horizontal).toBeUndefined();
 
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(res.rawPayload as unknown as ExcelJS.Buffer);
-    const ws = wb.getWorksheet("2026년 잔여 현황")!;
-    expect(ws.getCell("A1").value).toBe("2026년 잔여 현황");
-    expect(ws.getCell("A2").value).toBe("출력 2026.10.19.");
-    // 머리글: 직원·소속은 두 줄 병합, 연차는 세 칸 병합, 둘째 줄은 비어 있는 칸부터
-    const text = (row: number) => [1, 2, 3, 4, 5, 6].map((col) => ws.getCell(row, col).master.value);
-    expect(text(3)).toEqual(["직원", "소속", "연차\n2026년", "연차\n2026년", "연차\n2026년", "공가"]);
-    expect(text(4)).toEqual(["직원", "소속", "잔여", "부여", "사용", "사용"]);
-    expect(ws.getCell("A4").master.address).toBe("A3");
-    expect(ws.getCell("E3").master.address).toBe("C3");
-    expect(text(5)).toEqual(["홍길동", "아동사업부", "3일", "15일", "12일", "1일"]);
-    expect(ws.pageSetup).toMatchObject({ orientation: "landscape", paperSize: 9, fitToWidth: 1, fitToHeight: 0 });
-    expect(ws.views[0]).toMatchObject({ state: "frozen", xSplit: 1, ySplit: 4 });
+    const person = ["아동사업부", "직원", "홍길동"];
+    expect(sheetRows(wb.getWorksheet("휴가사용내역")!)).toEqual([
+      ["소속", "구분", "성명", "날짜", "시작시각", "종료시각", "휴가사유", "휴가종류", "사용시간", "비고(업무인계 및 기타사항)"],
+      [...person, "2026-01-01", "10:00", "19:00", "개인 사유", "병가", "1일", ""],
+      [...person, "2026-01-02", "10:00", "19:00", "개인 사유", "병가", "1일", ""],
+      [...person, "2026-10-13", "13:00", "19:00", "개인 사유", "연차", "6시간", "인계 메모"],
+      [...person, "2026-10-14", "10:00", "19:00", "개인 사유", "연차", "1일", "인계 메모"],
+      [...person, "2026-10-16", "10:00", "15:00", "개인 사유", "연차", "4시간", "인계 메모"],
+      [...person, "2026-10-20", "10:00", "12:00", "개인 사유", "대체휴가", "2시간", "[미차감]"],
+    ]);
+    expect(sheetRows(wb.getWorksheet("휴가부여내역")!)).toEqual([
+      ["소속", "구분", "성명", "부여일", "휴가종류", "부여량", "상세내용", "근무내역"],
+      [...person, "2026-02-01", "대체휴가", "3시간", "직접부여", "연초 이월"],
+      [...person, "2026-03-01", "연차", "15일", "기존 잔여", "기존 사용 5일 / 입력 당시 잔여 10일"],
+      [...person, "2026-10-19", "대체휴가", "2시간 30분", "특별근무", "행사 준비"],
+    ]);
+    // 잔여내역: 소속·구분·직원, 종류는 표시 이름 + 기준, 차감 종류는 부여·사용·잔여, 차감 안 하는 종류는 사용만
+    // 연차: 15일 - (기존 사용 5일 + 6시간 + 1일 + 4시간), 대체휴가: 미차감 휴가원은 사용에 안 듦
+    const remaining = wb.getWorksheet("잔여내역")!;
+    const annualHead = "연차\n2026년";
+    const compHead = "대체휴가\n누적";
+    const sickHead = "병가\n2026년";
+    expect(sheetRows(remaining)).toEqual([
+      ["소속", "구분", "직원", annualHead, annualHead, annualHead, compHead, compHead, compHead, sickHead, sickHead, sickHead, "공가\n차감 안 함"],
+      ["소속", "구분", "직원", "부여", "사용", "잔여", "부여", "사용", "잔여", "부여", "사용", "잔여", "사용"],
+      [...person, "15일", "7일 2시간", "7일 6시간", "5시간 30분", "0일", "5시간 30분", "0일", "2일", "-2일", "0일"],
+    ]);
+    expect(remaining.getCell("A2").master.address).toBe("A1");
+    expect(remaining.getCell("C2").master.address).toBe("C1");
+    expect(remaining.getCell("F1").master.address).toBe("D1");
+    expect(remaining.getCell("M1").isMerged).toBe(false);
+    expect(remaining.views[0]).toMatchObject({ state: "frozen", xSplit: 3, ySplit: 2 });
+    expect(remaining.pageSetup).toMatchObject({
+      paperSize: 9,
+      orientation: "landscape",
+      fitToWidth: 1,
+      fitToHeight: 0,
+      printTitlesRow: "1:2",
+    });
+    expect(remaining.getRow(1).height).toBe(33);
+    expect(remaining.columns.map((c) => c.width)).toEqual([11, 13, 9.5, ...Array(10).fill(10.625)]);
+    expect(remaining.getCell("D1")).toMatchObject({
+      font: { name: "맑은 고딕", size: 11, bold: true },
+      alignment: { horizontal: "center", vertical: "middle", wrapText: true },
+    });
+    expect(remaining.getCell("D3")).toMatchObject({
+      font: { name: "맑은 고딕", size: 11 },
+      alignment: { horizontal: "center", vertical: "top", wrapText: true },
+      border: { top: thin, left: thin, bottom: thin, right: thin },
+    });
 
-    const bad = await app.inject({ method: "POST", url: "/api/export/table.xlsx", payload: { title: "", subtitle: "", head: [], body: [] } });
-    expect(bad.statusCode).toBe(400);
+    // 다른 연도: 그 해 날짜만
+    const prev = await load((await app.inject({ method: "GET", url: "/api/export.xlsx?year=2025" })).rawPayload);
+    expect(sheetRows(prev.getWorksheet("휴가사용내역")!).slice(1)).toEqual([
+      [...person, "2025-12-31", "10:00", "19:00", "개인 사유", "병가", "1일", ""],
+    ]);
+    expect(sheetRows(prev.getWorksheet("휴가부여내역")!).slice(1)).toEqual([]);
+  });
+
+  it("연도를 안 주면 올해, 잘못된 연도는 400", async () => {
+    const { app } = await createTestApp();
+    const res = await app.inject({ method: "GET", url: "/api/export.xlsx" });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-disposition"]).toContain("leave-flow-2026.xlsx");
+    expect((await app.inject({ method: "GET", url: "/api/export.xlsx?year=abc" })).statusCode).toBe(400);
+    expect((await app.inject({ method: "GET", url: "/api/export.xlsx?year=1999" })).statusCode).toBe(400);
+  });
+
+  it("한 직원에게 표시 이름이 같은 종류가 둘 이상 나오면 그 시트에서는 관리 이름", async () => {
+    const { app, db } = await createTestApp();
+    const hong = insertEmployee(db, { name: "홍길동" });
+    const staff = insertLeaveType(db, { name: "연차(직원)" });
+    const teacher = insertLeaveType(db, { name: "연차(강사)", active: false });
+    execute(db, "UPDATE leave_types SET display_name = '연차'");
+    insertGrant(db, { employeeId: hong, leaveTypeId: staff, grantDate: "2026-01-01", minutes: 480 });
+    insertGrant(db, { employeeId: hong, leaveTypeId: teacher, grantDate: "2026-01-02", minutes: 480 });
+    const kim = insertEmployee(db, { name: "김철수" });
+    insertGrant(db, { employeeId: kim, leaveTypeId: staff, grantDate: "2026-01-03", minutes: 480 });
+
+    const wb = await load((await app.inject({ method: "GET", url: "/api/export.xlsx?year=2026" })).rawPayload);
+    expect(sheetRows(wb.getWorksheet("휴가부여내역")!).map((r) => [r[2], r[4]])).toEqual([
+      ["성명", "휴가종류"],
+      ["홍길동", "연차(직원)"],
+      ["홍길동", "연차(강사)"],
+      ["김철수", "연차"],
+    ]);
+  });
+
+  it("잔여내역: 표시 이름이 같은 종류는 한 열, 기준이 다르면 기간 칸, 적용되지 않으면 -", async () => {
+    const { app, db } = await createTestApp();
+    const staff = insertLeaveType(db, { name: "연차(직원)", sortOrder: 1 });
+    const agent = insertLeaveType(db, { name: "연차(요원)", balanceMode: "cumulative", sortOrder: 2 });
+    const special = insertLeaveType(db, { name: "특별휴가(요원)", balanceMode: "cumulative", sortOrder: 3 });
+    execute(db, "UPDATE leave_types SET display_name = '연차' WHERE id IN (?, ?)", [staff, agent]);
+    execute(db, "UPDATE leave_types SET display_name = '특별휴가' WHERE id = ?", [special]);
+    execute(db, `UPDATE leave_types SET target_categories = '["직원"]' WHERE id = ?`, [staff]);
+    execute(db, `UPDATE leave_types SET target_categories = '["사회복무요원"]' WHERE id IN (?, ?)`, [agent, special]);
+    const hong = insertEmployee(db, { name: "홍길동", category: "직원" });
+    const kim = insertEmployee(db, { name: "김요원", category: "사회복무요원" });
+    // 요원에서 직원으로 구분이 바뀐 직원: 예전 연차(요원) 부여가 남아 있음
+    const lee = insertEmployee(db, { name: "이변경", category: "직원" });
+    insertGrant(db, { employeeId: hong, leaveTypeId: staff, grantDate: "2026-01-01", minutes: 15 * 480 });
+    insertGrant(db, { employeeId: kim, leaveTypeId: agent, grantDate: "2026-01-01", minutes: 5 * 480 });
+    insertGrant(db, { employeeId: lee, leaveTypeId: staff, grantDate: "2026-01-01", minutes: 15 * 480 });
+    insertGrant(db, { employeeId: lee, leaveTypeId: agent, grantDate: "2025-06-01", minutes: 2 * 480 });
+
+    const wb = await load((await app.inject({ method: "GET", url: "/api/export.xlsx?year=2026" })).rawPayload);
+    const two = (a: string, b: string) => `연차(직원) ${a}\n연차(요원) ${b}`;
+    expect(sheetRows(wb.getWorksheet("잔여내역")!)).toEqual([
+      ["소속", "구분", "직원", "연차", "연차", "연차", "연차", "특별휴가\n누적", "특별휴가\n누적", "특별휴가\n누적"],
+      ["소속", "구분", "직원", "부여", "사용", "잔여", "기간", "부여", "사용", "잔여"],
+      ["아동사업부", "사회복무요원", "김요원", "5일", "0일", "5일", "누적", "0일", "0일", "0일"],
+      ["아동사업부", "직원", "이변경", two("15일", "2일"), two("0일", "0일"), two("15일", "2일"), two("2026년", "누적"), "-", "-", "-"],
+      ["아동사업부", "직원", "홍길동", "15일", "0일", "15일", "2026년", "-", "-", "-"],
+    ]);
   });
 });
 

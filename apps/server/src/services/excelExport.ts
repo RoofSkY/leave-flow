@@ -1,59 +1,38 @@
-// 전체 데이터를 사람이 읽을 수 있는 엑셀(.xlsx)로. 시트 이름·열 이름은 한국어.
+// 휴가원 관리대장 엑셀(.xlsx): 고른 연도의 휴가사용내역·휴가부여내역·잔여내역. 사용자가 준 양식(.dev/2026 휴가원 관리대장.xlsx)의 모양.
+// 모든 시트 A열 소속, B열 구분 (직원의 지금 값), 휴가 종류는 표시 이름. 영구 삭제한 직원은 넣지 않음
 import ExcelJS from "exceljs";
 import {
-  WEEKDAY_LABELS,
+  balanceScopeText,
+  columnBalances,
   dayMinutesOf,
-  formatDotDate,
-  formatHoursMinutes,
+  distinctLeaveTypeLabels,
   formatLeaveMinutes,
-  isCumulativeMode,
-  weekdayOf,
-  type AuditAction,
-  type AuditEntity,
+  leaveTypeColumns,
   type BalanceRow,
-  type TableExportInput,
+  type LeaveType,
 } from "@leave-flow/shared";
-import { parseJson, queryAll, toBool, toNum, type Db, type Row } from "../db/index.ts";
-import { getEmployeeBalances } from "./balances.ts";
-import { listEmployees } from "./queries.ts";
+import { queryAll, toBool, toNum, type Db, type Row } from "../db/index.ts";
+import { getEmployeeBalances, listReportEmployees } from "./balances.ts";
+import { parseByDate } from "./leaveUsage.ts";
+import { listLeaveTypes } from "./queries.ts";
 
 type Cell = string | number | null;
 
 interface Column {
   header: string;
   width: number;
+  /** 왼쪽 정렬 (긴 글). 기본은 가운데 */
+  left?: boolean;
 }
 
-const ENTITY_LABELS: Record<AuditEntity, string> = {
-  leave_request: "휴가원",
-  overtime_request: "시간외근무 신청서",
-  employee: "직원",
-  leave_type: "휴가 종류",
-  leave_grant: "부여 내역",
-  opening_balance: "기존 잔여량",
-  holiday: "공휴일·휴무일",
-  department: "소속",
-  category: "구분",
-  settings: "설정",
-  system: "시스템",
-};
+const FONT_NAME = "맑은 고딕";
+const HEADER_FONT: Partial<ExcelJS.Font> = { name: FONT_NAME, size: 11, bold: true };
+const BODY_FONT: Partial<ExcelJS.Font> = { name: FONT_NAME, size: 11 };
+const HEADER_FILL: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F2F0" } };
+const THIN = { style: "thin" } as const;
+const ALL_BORDERS: Partial<ExcelJS.Borders> = { top: THIN, left: THIN, bottom: THIN, right: THIN };
 
-const ACTION_LABELS: Record<AuditAction, string> = {
-  create: "추가",
-  update: "수정",
-  cancel: "취소",
-  restore: "복구",
-  activate: "활성화",
-  deactivate: "비활성화",
-  delete: "삭제",
-  print: "출력",
-  accrue: "적립",
-  recalculate: "재계산",
-  backup: "백업",
-  restore_backup: "백업 복구",
-  update_app: "업데이트",
-};
-
+/** 시간외근무 신청서의 상세내용 */
 const CATEGORY_LABELS: Record<string, string> = {
   official_event: "공식행사",
   special_work: "특별근무",
@@ -61,512 +40,273 @@ const CATEGORY_LABELS: Record<string, string> = {
   award: "시상",
 };
 
-const OVERTIME_KIND_LABELS: Record<string, string> = {
-  general: "일반",
-  soldier: "사회복무요원 특별휴가",
-  award: "사회복무요원 특별휴가(시상)",
-};
-
-/** 엑셀 셀 최대 글자 수 (32,767) 보다 짧게 */
-const MAX_CELL = 32_000;
-
-const yesNo = (v: unknown) => (toBool(v) ? "예" : "아니오");
-const statusLabel = (v: unknown) => (v === "cancelled" ? "취소" : "신청");
-const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
 /** 1일 = 그 직원의 하루 근무시간 */
 const fmt = (minutes: number, dayMinutes: number) => formatLeaveMinutes(minutes, dayMinutes);
 const dayOfRow = (r: Row) => dayMinutesOf({ workStart: String(r.work_start), workEnd: String(r.work_end) });
-const workDaysLabel = (v: unknown) =>
-  parseJson<number[]>(v, [])
-    .map((d) => WEEKDAY_LABELS[d] ?? "")
-    .join("·");
-const jsonCell = (v: unknown): string | null => {
-  if (v === null || v === undefined) return null;
-  const s = String(v);
-  return s.length > MAX_CELL ? `${s.slice(0, MAX_CELL)}…` : s;
-};
 
+/** 머리글 1줄 + 본문 표: 모든 칸 테두리, 머리글은 굵게·회색 바탕, 본문은 가운데 정렬(left 칸 제외), 첫 줄 고정·필터 */
 function addSheet(wb: ExcelJS.Workbook, name: string, columns: Column[], rows: Cell[][]): void {
   const ws = wb.addWorksheet(name, { views: [{ state: "frozen", ySplit: 1 }] });
   ws.columns = columns.map((c) => ({ header: c.header, width: c.width }));
   for (const r of rows) ws.addRow(r);
-  const header = ws.getRow(1);
-  header.font = { bold: true };
-  header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F2F0" } };
-  header.alignment = { vertical: "middle" };
-  if (rows.length > 0) ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } };
-}
-
-const cols = (...defs: [string, number][]): Column[] => defs.map(([header, width]) => ({ header, width }));
-
-function employeesSheet(wb: ExcelJS.Workbook, db: Db): void {
-  const rows = queryAll(db, "SELECT * FROM employees WHERE deleted = 0 ORDER BY active DESC, name, id").map((r): Cell[] => [
-    toNum(r.id),
-    String(r.name),
-    String(r.department),
-    String(r.color),
-    workDaysLabel(r.work_days),
-    String(r.work_start),
-    String(r.work_end),
-    String(r.emergency_contact),
-    parseJson<string[]>(r.approval_roles, []).join("·"),
-    String(r.category),
-    yesNo(r.active),
-    String(r.created_at),
-    String(r.updated_at),
-  ]);
-  addSheet(
-    wb,
-    "직원",
-    cols(
-      ["ID", 6],
-      ["성명", 12],
-      ["소속", 16],
-      ["색상", 10],
-      ["근무 요일", 16],
-      ["근무 시작", 10],
-      ["근무 종료", 10],
-      ["비상연락처", 16],
-      ["결재칸", 18],
-      ["구분", 14],
-      ["활성", 8],
-      ["생성일시", 20],
-      ["수정일시", 20],
-    ),
-    rows,
-  );
-}
-
-/** 잔여 방식: "연도별", "누적", "매년 2월 28일 소멸", "부여 후 12개월 소멸", "소진" */
-function balanceModeLabel(r: Row): string {
-  if (r.balance_mode === "cumulative") return "누적";
-  if (r.balance_mode === "used_up") return toBool(r.hide_when_empty) ? "소진 (남은 양이 없으면 휴가원에서 숨김)" : "소진";
-  if (r.balance_mode === "expire_date") return `매년 ${toNum(r.expire_month)}월 ${toNum(r.expire_day)}일 소멸`;
-  if (r.balance_mode === "grant_period") return `부여 후 ${toNum(r.valid_months)}개월 소멸`;
-  return "연도별";
-}
-
-function leaveTypesSheet(wb: ExcelJS.Workbook, db: Db): void {
-  const rows = queryAll(db, "SELECT * FROM leave_types WHERE deleted = 0 ORDER BY sort_order, id").map((r): Cell[] => [
-    toNum(r.id),
-    String(r.name),
-    String(r.display_name),
-    yesNo(r.deducts),
-    balanceModeLabel(r),
-    toNum(r.sort_order),
-    yesNo(r.active),
-    String(r.created_at),
-    String(r.updated_at),
-  ]);
-  addSheet(
-    wb,
-    "휴가 종류",
-    cols(
-      ["ID", 6],
-      ["이름", 16],
-      ["표시 이름", 12],
-      ["잔여 차감", 10],
-      ["잔여 방식", 20],
-      ["표시 순서", 10],
-      ["활성", 8],
-      ["생성일시", 20],
-      ["수정일시", 20],
-    ),
-    rows,
-  );
-}
-
-function grantsSheet(wb: ExcelJS.Workbook, db: Db): void {
-  const rows = queryAll(
-    db,
-    `SELECT g.*, e.name AS employee_name, e.work_start, e.work_end, t.name AS type_name
-       FROM leave_grants g JOIN employees e ON e.id = g.employee_id JOIN leave_types t ON t.id = g.leave_type_id
-      WHERE e.deleted = 0
-      ORDER BY g.grant_date DESC, g.id DESC`,
-  ).map((r): Cell[] => [
-    toNum(r.id),
-    toNum(r.employee_id),
-    String(r.employee_name),
-    String(r.type_name),
-    String(r.grant_date),
-    toNum(r.minutes),
-    fmt(toNum(r.minutes), dayOfRow(r)),
-    String(r.note),
-    r.source === "overtime" ? "시간외근무" : "직접 입력",
-    r.overtime_request_id === null ? null : toNum(r.overtime_request_id),
-    String(r.created_at),
-    String(r.updated_at),
-  ]);
-  addSheet(
-    wb,
-    "부여 내역",
-    cols(
-      ["ID", 6],
-      ["직원 ID", 8],
-      ["성명", 12],
-      ["휴가 종류", 14],
-      ["부여일자", 12],
-      ["부여량(분)", 11],
-      ["부여량", 12],
-      ["비고", 30],
-      ["출처", 12],
-      ["시간외근무 신청서 ID", 18],
-      ["생성일시", 20],
-      ["수정일시", 20],
-    ),
-    rows,
-  );
-}
-
-function openingBalancesSheet(wb: ExcelJS.Workbook, db: Db): void {
-  const rows = queryAll(
-    db,
-    `SELECT o.*, e.name AS employee_name, e.work_start, e.work_end, t.name AS type_name
-       FROM opening_balances o JOIN employees e ON e.id = o.employee_id JOIN leave_types t ON t.id = o.leave_type_id
-      WHERE e.deleted = 0
-      ORDER BY o.year DESC, e.name, t.sort_order, t.id`,
-  ).map((r): Cell[] => {
-    const day = dayOfRow(r);
-    return [
-      toNum(r.id),
-      toNum(r.employee_id),
-      String(r.employee_name),
-      String(r.type_name),
-      toNum(r.year),
-      String(r.base_date),
-      fmt(toNum(r.total_granted_minutes), day),
-      toNum(r.remaining_minutes),
-      fmt(toNum(r.remaining_minutes), day),
-      toNum(r.used_minutes),
-      fmt(toNum(r.used_minutes), day),
-      String(r.created_at),
-      String(r.updated_at),
-    ];
+  ws.eachRow((row, n) => {
+    columns.forEach((c, i) => {
+      const cell = row.getCell(i + 1);
+      cell.border = ALL_BORDERS;
+      if (n === 1) {
+        cell.font = HEADER_FONT;
+        cell.fill = HEADER_FILL;
+        cell.alignment = c.left ? { vertical: "middle" } : { horizontal: "center", vertical: "middle" };
+      } else {
+        cell.font = BODY_FONT;
+        if (!c.left) cell.alignment = { horizontal: "center" };
+      }
+    });
   });
-  addSheet(
-    wb,
-    "기존 잔여량",
-    cols(
-      ["ID", 6],
-      ["직원 ID", 8],
-      ["성명", 12],
-      ["휴가 종류", 14],
-      ["연도", 8],
-      ["기준일자", 12],
-      ["총 부여량", 10],
-      ["입력 당시 잔여(분)", 16],
-      ["입력 당시 잔여", 14],
-      ["기존 사용량(분)", 15],
-      ["기존 사용량", 14],
-      ["생성일시", 20],
-      ["수정일시", 20],
-    ),
-    rows,
-  );
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } };
 }
 
-function leaveRequestsSheet(wb: ExcelJS.Workbook, db: Db): void {
-  const rows = queryAll(
-    db,
-    `SELECT r.*, (SELECT COALESCE(SUM(i.minutes), 0) FROM leave_request_items i WHERE i.request_id = r.id) AS total_minutes
-       FROM leave_requests r ORDER BY r.id DESC`,
-  ).map((r): Cell[] => [
-    toNum(r.id),
-    toNum(r.employee_id),
-    String(r.employee_name),
-    String(r.department),
-    String(r.applied_on),
-    workDaysLabel(r.work_days),
-    `${String(r.work_start)}~${String(r.work_end)}`,
-    String(r.reason),
-    String(r.emergency_contact),
-    String(r.handover_note),
-    yesNo(r.no_deduct),
-    statusLabel(r.status),
-    str(r.cancelled_at),
-    str(r.last_printed_at),
-    toNum(r.total_minutes),
-    String(r.created_at),
-    String(r.updated_at),
-  ]);
-  addSheet(
-    wb,
-    "휴가원",
-    cols(
-      ["ID", 6],
-      ["직원 ID", 8],
-      ["성명", 12],
-      ["소속", 16],
-      ["신청일자", 12],
-      ["근무 요일", 16],
-      ["근무시간", 13],
-      ["휴가사유", 30],
-      ["비상연락처", 16],
-      ["업무인계 및 기타사항", 36],
-      ["미차감", 8],
-      ["상태", 8],
-      ["취소일시", 20],
-      ["최근 출력일시", 20],
-      ["합계(분)", 10],
-      ["생성일시", 20],
-      ["수정일시", 20],
-    ),
-    rows,
-  );
+const cols = (...defs: ([string, number] | [string, number, "left"])[]): Column[] =>
+  defs.map(([header, width, align]) => ({ header, width, left: align === "left" }));
+
+interface TypedLine {
+  employeeId: number;
+  leaveTypeId: number;
+  /** 관리 이름 */
+  name: string;
+  /** 표시 이름 (빈 값 = 관리 이름) */
+  displayName: string;
 }
-
-function leaveItemsSheet(wb: ExcelJS.Workbook, db: Db): void {
-  const rows = queryAll(
-    db,
-    `SELECT i.*, r.employee_name, r.status, r.work_start, r.work_end, t.name AS type_name
-       FROM leave_request_items i JOIN leave_requests r ON r.id = i.request_id JOIN leave_types t ON t.id = i.leave_type_id
-      ORDER BY i.start_at DESC, i.id DESC`,
-  ).map((r): Cell[] => {
-    const day = dayOfRow(r);
-    const byYear = Object.entries(parseJson<Record<string, number>>(r.minutes_by_year, {}))
-      .map(([y, m]) => `${y}년 ${fmt(m, day)}`)
-      .join(", ");
-    return [
-      toNum(r.id),
-      toNum(r.request_id),
-      String(r.employee_name),
-      String(r.type_name),
-      String(r.start_at).replace("T", " "),
-      String(r.end_at).replace("T", " "),
-      toNum(r.minutes),
-      fmt(toNum(r.minutes), day),
-      byYear,
-      statusLabel(r.status),
-    ];
-  });
-  addSheet(
-    wb,
-    "휴가원 항목",
-    cols(
-      ["ID", 6],
-      ["휴가원 ID", 10],
-      ["성명", 12],
-      ["휴가 종류", 14],
-      ["시작일시", 18],
-      ["종료일시", 18],
-      ["사용 시간(분)", 13],
-      ["사용 시간", 12],
-      ["연도별 사용", 20],
-      ["휴가원 상태", 11],
-    ),
-    rows,
-  );
-}
-
-function overtimeSheet(wb: ExcelJS.Workbook, db: Db): void {
-  const targets = new Map<number, Row[]>();
-  for (const t of queryAll(
-    db,
-    `SELECT ot.*, t.name AS type_name FROM overtime_targets ot LEFT JOIN leave_types t ON t.id = ot.leave_type_id
-      ORDER BY ot.overtime_request_id, ot.sort_order, ot.id`,
-  )) {
-    const id = toNum(t.overtime_request_id);
-    targets.set(id, [...(targets.get(id) ?? []), t]);
-  }
-  const rows = queryAll(
-    db,
-    `SELECT o.*, EXISTS (SELECT 1 FROM leave_grants g WHERE g.overtime_request_id = o.id) AS accrued
-       FROM overtime_requests o
-      ORDER BY o.id DESC`,
-  ).map((r): Cell[] => {
-    const general = r.kind === "general";
-    const own = targets.get(toNum(r.id)) ?? [];
-    // 대상자마다 고른 적립 종류
-    const typeNames = [...new Set(own.filter((t) => t.type_name !== null).map((t) => String(t.type_name)))].join(", ");
-    const list = own
-      .map((t) =>
-        general
-          ? String(t.employee_name)
-          : `${String(t.employee_name)} ${toNum(t.days)}일${t.month === null ? "" : `(${toNum(t.month)}월)`}`,
-      )
-      .join(", ");
-    const minutes = r.minutes === null ? null : toNum(r.minutes);
-    return [
-      toNum(r.id),
-      OVERTIME_KIND_LABELS[String(r.kind)] ?? String(r.kind),
-      list,
-      str(r.work_start_at)?.replace("T", " ") ?? null,
-      str(r.work_end_at)?.replace("T", " ") ?? null,
-      minutes,
-      minutes === null ? null : formatHoursMinutes(minutes),
-      String(r.cumulative_note),
-      CATEGORY_LABELS[String(r.category)] ?? String(r.category),
-      String(r.work_details),
-      str(r.paid_on),
-      str(r.submitted_on),
-      typeNames || null,
-      yesNo(r.accrued),
-      statusLabel(r.status),
-      str(r.cancelled_at),
-      str(r.last_printed_at),
-      String(r.created_at),
-      String(r.updated_at),
-    ];
-  });
-  addSheet(
-    wb,
-    "시간외근무 신청서",
-    cols(
-      ["ID", 6],
-      ["종류", 20],
-      ["대상자", 30],
-      ["근무 시작일시", 18],
-      ["근무 종료일시", 18],
-      ["금일발생(분)", 12],
-      ["금일발생", 11],
-      ["누적", 14],
-      ["상세내용", 10],
-      ["근무내역", 40],
-      ["지급일자", 12],
-      ["제출일", 12],
-      ["적립 휴가 종류", 14],
-      ["적립됨", 8],
-      ["상태", 8],
-      ["취소일시", 20],
-      ["최근 출력일시", 20],
-      ["생성일시", 20],
-      ["수정일시", 20],
-    ),
-    rows,
-  );
-}
-
-function holidaysSheet(wb: ExcelJS.Workbook, db: Db): void {
-  const rows = queryAll(db, "SELECT * FROM holidays ORDER BY date, kind, name").map((r): Cell[] => [
-    toNum(r.id),
-    String(r.date),
-    WEEKDAY_LABELS[weekdayOf(String(r.date))] ?? "",
-    String(r.name),
-    r.kind === "center" ? "센터 휴무일" : "법정공휴일",
-    r.source === "manual" ? "수동" : "자동",
-    yesNo(r.active),
-  ]);
-  addSheet(
-    wb,
-    "공휴일·휴무일",
-    cols(["ID", 6], ["날짜", 12], ["요일", 6], ["이름", 20], ["구분", 12], ["등록 방식", 10], ["사용", 8]),
-    rows,
-  );
-}
-
-/** 잔여를 계산한 범위: "2026년", "누적(2026년까지)", "2026.03.01.~2027.02.28.", "2026.10.20. 기준" */
-function balanceScopeLabel(b: BalanceRow): string {
-  if (isCumulativeMode(b.balanceMode)) return `누적(${b.year}년까지)`;
-  if (b.balanceMode === "grant_period") return b.asOf ? `${formatDotDate(b.asOf)} 기준` : `${b.year}년`;
-  if (b.balanceMode === "expire_date" && b.periodStart && b.periodEnd) {
-    return `${formatDotDate(b.periodStart)}~${formatDotDate(b.periodEnd)}`;
-  }
-  return `${b.year}년`;
-}
-
-function usageSheet(wb: ExcelJS.Workbook, db: Db, year: number, today: string): void {
-  const rows: Cell[][] = [];
-  for (const e of listEmployees(db, { includeInactive: true })) {
-    for (const b of getEmployeeBalances(db, e.id, year, { today })) {
-      rows.push([
-        e.name,
-        e.department,
-        e.active ? "예" : "아니오",
-        b.name,
-        balanceScopeLabel(b),
-        fmt(b.grantedMinutes, dayMinutesOf(e)),
-        fmt(b.usedMinutes, dayMinutesOf(e)),
-        b.remainingMinutes === null ? "차감 안 함" : fmt(b.remainingMinutes, dayMinutesOf(e)),
-        b.grantedMinutes,
-        b.usedMinutes,
-        b.remainingMinutes,
-      ]);
-    }
-  }
-  addSheet(
-    wb,
-    "사용 현황 요약",
-    cols(
-      ["성명", 12],
-      ["소속", 16],
-      ["재직", 8],
-      ["휴가 종류", 14],
-      ["기준", 16],
-      ["부여", 12],
-      ["사용", 12],
-      ["잔여", 12],
-      ["부여(분)", 10],
-      ["사용(분)", 10],
-      ["잔여(분)", 10],
-    ),
-    rows,
-  );
-}
-
-function auditSheet(wb: ExcelJS.Workbook, db: Db): void {
-  const rows = queryAll(db, "SELECT * FROM audit_logs ORDER BY at DESC, id DESC").map((r): Cell[] => [
-    toNum(r.id),
-    String(r.at),
-    String(r.ip),
-    ENTITY_LABELS[String(r.entity) as AuditEntity] ?? String(r.entity),
-    r.entity_id === null ? null : toNum(r.entity_id),
-    r.employee_id === null ? null : toNum(r.employee_id),
-    ACTION_LABELS[String(r.action) as AuditAction] ?? String(r.action),
-    String(r.summary),
-    jsonCell(r.before_json),
-    jsonCell(r.after_json),
-  ]);
-  addSheet(
-    wb,
-    "변경 이력",
-    cols(
-      ["ID", 7],
-      ["일시", 20],
-      ["IP", 15],
-      ["대상", 16],
-      ["대상 ID", 8],
-      ["직원 ID", 8],
-      ["작업", 10],
-      ["내용", 50],
-      ["변경 전", 40],
-      ["변경 후", 40],
-    ),
-    rows,
-  );
-}
-
-/** 엑셀 백업 파일 내용 (today: 사용 현황 요약 기준 연도) */
-export async function buildExportWorkbook(db: Db, today: string): Promise<Buffer> {
-  const wb = new ExcelJS.Workbook();
-  wb.creator = "leave-flow";
-  employeesSheet(wb, db);
-  leaveTypesSheet(wb, db);
-  grantsSheet(wb, db);
-  openingBalancesSheet(wb, db);
-  leaveRequestsSheet(wb, db);
-  leaveItemsSheet(wb, db);
-  overtimeSheet(wb, db);
-  holidaysSheet(wb, db);
-  usageSheet(wb, db, Number(today.slice(0, 4)), today);
-  auditSheet(wb, db);
-  return Buffer.from(await wb.xlsx.writeBuffer());
-}
-
-/** 엑셀 열 너비 단위에 가까운 글자 폭 (한글 등 넓은 글자 2, 나머지 1) */
-const textWidth = (s: string) => [...s].reduce((w, ch) => w + (ch.codePointAt(0)! >= 0x2e80 ? 2 : 1), 0);
-
-const THIN = { style: "thin" } as const;
-const ALL_BORDERS = { top: THIN, left: THIN, bottom: THIN, right: THIN };
 
 /**
- * 화면 표 그대로 엑셀로 (잔여 현황·사용 현황).
- * 1줄 제목, 2줄 부제목, 3줄부터 머리글(colSpan·rowSpan → 셀 병합)과 본문. 인쇄는 A4 가로, 너비를 한 장에 맞춤
+ * 직원마다 휴가 종류의 보이는 이름. 한 직원에게 표시 이름이 같은 종류가 둘 이상 나오면
+ * (구분이 바뀐 직원의 예전 기록 등) 그 종류들은 관리 이름으로 구별
  */
-export async function buildTableWorkbook(input: TableExportInput): Promise<Buffer> {
-  const wb = new ExcelJS.Workbook();
-  wb.creator = "leave-flow";
-  // 시트 이름: 31자 이하, : \ / ? * [ ] 못 씀
-  const ws = wb.addWorksheet(input.title.replace(/[:\\/?*[\]]/g, " ").slice(0, 31), {
+function labelsByEmployee(lines: readonly TypedLine[]): (line: TypedLine) => string {
+  const types = new Map<number, Map<number, TypedLine>>();
+  for (const l of lines) {
+    const own = types.get(l.employeeId) ?? new Map<number, TypedLine>();
+    if (!own.has(l.leaveTypeId)) own.set(l.leaveTypeId, l);
+    types.set(l.employeeId, own);
+  }
+  const labels = new Map<string, string>();
+  for (const [employeeId, own] of types) {
+    const label = distinctLeaveTypeLabels([...own.values()]);
+    for (const t of own.values()) labels.set(`${employeeId}:${t.leaveTypeId}`, label(t));
+  }
+  return (l) => labels.get(`${l.employeeId}:${l.leaveTypeId}`) ?? (l.displayName || l.name);
+}
+
+/** 정렬: 문자열 칸을 차례로 비교 */
+const byKeys = <T>(...keys: ((x: T) => string | number)[]) => (a: T, b: T): number => {
+  for (const k of keys) {
+    const x = k(a);
+    const y = k(b);
+    if (x < y) return -1;
+    if (x > y) return 1;
+  }
+  return 0;
+};
+
+interface UsageLine extends TypedLine {
+  itemId: number;
+  department: string;
+  category: string;
+  employeeName: string;
+  date: string;
+  start: string;
+  end: string;
+  reason: string;
+  minutes: number;
+  dayMinutes: number;
+  note: string;
+}
+
+/**
+ * 휴가사용내역: 신청 상태 휴가원 항목을 날짜마다 1줄 (그 해 날짜만, 저장된 날짜별 사용량).
+ * 시작·종료시각: 항목 첫날은 항목 시작부터, 마지막 날은 항목 종료까지, 그 밖은 휴가원에 저장된 근무시간.
+ * 미차감 휴가원은 비고 앞에 [미차감]
+ */
+function usageSheet(wb: ExcelJS.Workbook, db: Db, year: number): void {
+  const lines: UsageLine[] = [];
+  const items = queryAll(
+    db,
+    `SELECT i.id, i.leave_type_id, i.start_at, i.end_at, i.minutes_by_date,
+            r.employee_id, r.reason, r.handover_note, r.no_deduct, r.work_start, r.work_end,
+            e.name AS employee_name, e.department, e.category, t.name AS type_name, t.display_name
+       FROM leave_request_items i
+       JOIN leave_requests r ON r.id = i.request_id
+       JOIN employees e ON e.id = r.employee_id
+       JOIN leave_types t ON t.id = i.leave_type_id
+      WHERE r.status = 'active' AND e.deleted = 0 AND json_extract(i.minutes_by_year, ?) > 0`,
+    [`$."${year}"`],
+  );
+  for (const r of items) {
+    const startAt = String(r.start_at);
+    const endAt = String(r.end_at);
+    const handover = String(r.handover_note);
+    const note = toBool(r.no_deduct) ? (handover ? `[미차감] ${handover}` : "[미차감]") : handover;
+    for (const d of parseByDate(r.minutes_by_date)) {
+      if (!d.date.startsWith(`${year}-`) || d.minutes <= 0) continue;
+      lines.push({
+        itemId: toNum(r.id),
+        employeeId: toNum(r.employee_id),
+        leaveTypeId: toNum(r.leave_type_id),
+        name: String(r.type_name),
+        displayName: String(r.display_name),
+        department: String(r.department),
+        category: String(r.category),
+        employeeName: String(r.employee_name),
+        date: d.date,
+        start: d.date === startAt.slice(0, 10) ? startAt.slice(11, 16) : String(r.work_start),
+        end: d.date === endAt.slice(0, 10) ? endAt.slice(11, 16) : String(r.work_end),
+        reason: String(r.reason),
+        minutes: d.minutes,
+        dayMinutes: dayOfRow(r),
+        note,
+      });
+    }
+  }
+  lines.sort(byKeys((l) => l.date, (l) => l.start, (l) => l.employeeName, (l) => l.itemId));
+  const label = labelsByEmployee(lines);
+  addSheet(
+    wb,
+    "휴가사용내역",
+    cols(
+      ["소속", 11],
+      ["구분", 13],
+      ["성명", 9.5],
+      ["날짜", 11.125],
+      ["시작시각", 13.25],
+      ["종료시각", 13.25],
+      ["휴가사유", 13.25],
+      ["휴가종류", 13.25],
+      ["사용시간", 13.25],
+      ["비고(업무인계 및 기타사항)", 30.5],
+    ),
+    lines.map((l) => [
+      l.department,
+      l.category,
+      l.employeeName,
+      l.date,
+      l.start,
+      l.end,
+      l.reason,
+      label(l),
+      fmt(l.minutes, l.dayMinutes),
+      l.note,
+    ]),
+  );
+}
+
+interface GrantLine extends TypedLine {
+  department: string;
+  category: string;
+  employeeName: string;
+  date: string;
+  amount: string;
+  detail: string;
+  work: string;
+}
+
+/**
+ * 휴가부여내역: 부여일이 그 해인 부여 내역 + 그 해 기존 잔여 입력.
+ * 시간외근무 적립은 신청서의 상세내용·근무내역, 직접 입력은 "직접부여"·부여 비고,
+ * 기존 잔여는 기준일자·총 부여량·"기존 잔여"·기존 사용량과 입력 당시 잔여
+ */
+function grantsSheet(wb: ExcelJS.Workbook, db: Db, year: number): void {
+  const grants = queryAll(
+    db,
+    `SELECT g.employee_id, g.leave_type_id, g.grant_date, g.minutes, g.note, g.source,
+            o.category AS overtime_category, o.work_details,
+            e.name AS employee_name, e.department, e.category, e.work_start, e.work_end,
+            t.name AS type_name, t.display_name
+       FROM leave_grants g
+       JOIN employees e ON e.id = g.employee_id
+       JOIN leave_types t ON t.id = g.leave_type_id
+       LEFT JOIN overtime_requests o ON o.id = g.overtime_request_id
+      WHERE e.deleted = 0 AND substr(g.grant_date, 1, 4) = ?`,
+    [String(year)],
+  ).map((r): GrantLine => {
+    const overtime = r.source === "overtime";
+    return {
+      ...employeeOf(r),
+      date: String(r.grant_date),
+      amount: fmt(toNum(r.minutes), dayOfRow(r)),
+      detail: overtime ? (CATEGORY_LABELS[String(r.overtime_category)] ?? String(r.overtime_category ?? "")) : "직접부여",
+      work: overtime ? String(r.work_details ?? "") : String(r.note),
+    };
+  });
+  const openings = queryAll(
+    db,
+    `SELECT o.employee_id, o.leave_type_id, o.base_date, o.total_granted_minutes, o.remaining_minutes, o.used_minutes,
+            e.name AS employee_name, e.department, e.category, e.work_start, e.work_end,
+            t.name AS type_name, t.display_name
+       FROM opening_balances o
+       JOIN employees e ON e.id = o.employee_id
+       JOIN leave_types t ON t.id = o.leave_type_id
+      WHERE e.deleted = 0 AND o.year = ?`,
+    [year],
+  ).map((r): GrantLine => {
+    const day = dayOfRow(r);
+    return {
+      ...employeeOf(r),
+      date: String(r.base_date),
+      amount: fmt(toNum(r.total_granted_minutes), day),
+      detail: "기존 잔여",
+      work: `기존 사용 ${fmt(toNum(r.used_minutes), day)} / 입력 당시 잔여 ${fmt(toNum(r.remaining_minutes), day)}`,
+    };
+  });
+  const lines = [...openings, ...grants].sort(byKeys((l) => l.date, (l) => l.employeeName));
+  const label = labelsByEmployee(lines);
+  addSheet(
+    wb,
+    "휴가부여내역",
+    cols(
+      ["소속", 11],
+      ["구분", 13],
+      ["성명", 9.5],
+      ["부여일", 11.375],
+      ["휴가종류", 11.25],
+      ["부여량", 11.375],
+      ["상세내용", 13.25],
+      ["근무내역", 45.375, "left"],
+    ),
+    lines.map((l) => [l.department, l.category, l.employeeName, l.date, label(l), l.amount, l.detail, l.work]),
+  );
+}
+
+/** 부여·기존 잔여 행의 직원·종류 칸 */
+function employeeOf(r: Row): Omit<GrantLine, "date" | "amount" | "detail" | "work"> {
+  return {
+    employeeId: toNum(r.employee_id),
+    leaveTypeId: toNum(r.leave_type_id),
+    name: String(r.type_name),
+    displayName: String(r.display_name),
+    department: String(r.department),
+    category: String(r.category),
+    employeeName: String(r.employee_name),
+  };
+}
+
+/**
+ * 잔여내역 (잔여 현황 화면과 같은 열): 소속·구분·직원, 휴가 종류는 표시 이름으로 묶어 부여·사용·잔여
+ * (묶은 종류의 기준이 서로 다르면 기간 칸도), 차감 안 하는 종류는 사용만. 적용되는 종류가 없으면 "-".
+ * 직원 = 활성 직원 + 그 해 기록이 있는 비활성 직원, 종류 = 활성 종류.
+ * 머리글 2줄(소속·구분·직원은 두 줄 병합, 종류 이름은 칸 병합), 소속~직원 열과 머리글 고정, 인쇄는 A4 가로·너비 한 장
+ */
+function remainingSheet(wb: ExcelJS.Workbook, db: Db, year: number, today: string): void {
+  const types = listLeaveTypes(db);
+  const scopeOf = (t: LeaveType) => balanceScopeText(t, year, today);
+  const typeById = new Map(types.map((t) => [t.id, t]));
+  const rowScope = (b: BalanceRow) => {
+    const t = typeById.get(b.leaveTypeId);
+    return t ? scopeOf(t) : "";
+  };
+  const deducting = leaveTypeColumns(types.filter((t) => t.deducts), scopeOf);
+  const usedOnly = leaveTypeColumns(types.filter((t) => !t.deducts), scopeOf);
+  const ws = wb.addWorksheet("잔여내역", {
+    views: [{ state: "frozen", xSplit: 3, ySplit: 2 }],
     pageSetup: {
       paperSize: 9,
       orientation: "landscape",
@@ -574,61 +314,90 @@ export async function buildTableWorkbook(input: TableExportInput): Promise<Buffe
       fitToWidth: 1,
       fitToHeight: 0,
       margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
+      printTitlesRow: "1:2",
     },
   });
-  const title = ws.getCell(1, 1);
-  title.value = input.title;
-  title.font = { bold: true, size: 14 };
-  if (input.subtitle) ws.getCell(2, 1).value = input.subtitle;
 
-  const headTop = 3;
-  const bodyTop = headTop + input.head.length;
-  const widths: number[] = [];
-  const fit = (col: number, text: string) => {
-    const w = Math.max(...text.split("\n").map(textWidth));
-    widths[col] = Math.max(widths[col] ?? 0, w);
-  };
-
-  // 머리글: HTML 표처럼 위 줄의 rowSpan 이 차지한 칸은 건너뛰며 배치
-  const taken = new Set<string>();
-  let colCount = 0;
-  input.head.forEach((cells, r) => {
-    let c = 0;
-    for (const cell of cells) {
-      while (taken.has(`${r}:${c}`)) c++;
-      const rowSpan = Math.min(cell.rowSpan ?? 1, input.head.length - r);
-      const colSpan = cell.colSpan ?? 1;
-      for (let dr = 0; dr < rowSpan; dr++) for (let dc = 0; dc < colSpan; dc++) taken.add(`${r + dr}:${c + dc}`);
-      ws.getCell(headTop + r, c + 1).value = cell.text;
-      if (rowSpan > 1 || colSpan > 1) ws.mergeCells(headTop + r, c + 1, headTop + r + rowSpan - 1, c + colSpan);
-      if (colSpan === 1) fit(c, cell.text);
-      c += colSpan;
-      colCount = Math.max(colCount, c);
-    }
+  // 머리글
+  const fixed: [string, number][] = [
+    ["소속", 11],
+    ["구분", 13],
+    ["직원", 9.5],
+  ];
+  fixed.forEach(([text, width], i) => {
+    ws.getCell(1, i + 1).value = text;
+    ws.mergeCells(1, i + 1, 2, i + 1);
+    ws.getColumn(i + 1).width = width;
   });
-  input.body.forEach((cells, r) => {
-    cells.forEach((text, c) => {
-      ws.getCell(bodyTop + r, c + 1).value = text;
-      fit(c, text);
+  const groups: [string, string[]][] = [
+    ...deducting.map((c): [string, string[]] => [
+      c.scope ? `${c.label}\n${c.scope}` : c.label,
+      ["부여", "사용", "잔여", ...(c.scope ? [] : ["기간"])],
+    ]),
+    ...usedOnly.map((c): [string, string[]] => [`${c.label}\n차감 안 함`, ["사용"]]),
+  ];
+  let col = fixed.length + 1;
+  for (const [title, subs] of groups) {
+    ws.getCell(1, col).value = title;
+    if (subs.length > 1) ws.mergeCells(1, col, 1, col + subs.length - 1);
+    subs.forEach((text, i) => {
+      ws.getCell(2, col + i).value = text;
+      ws.getColumn(col + i).width = 10.625;
     });
-    colCount = Math.max(colCount, cells.length);
-  });
+    col += subs.length;
+  }
+  const colCount = col - 1;
+  ws.getRow(1).height = 33;
 
-  for (let r = headTop; r < bodyTop + input.body.length; r++) {
+  // 본문
+  let rowNo = 3;
+  for (const e of listReportEmployees(db, year)) {
+    const f = (m: number) => fmt(m, dayMinutesOf(e));
+    const byType = new Map(getEmployeeBalances(db, e.id, year, { today }).map((b) => [b.leaveTypeId, b]));
+    // 같은 표시 이름의 종류가 둘 이상(소속·구분이 바뀐 직원)이면 관리 이름을 붙여 줄을 바꿈
+    const lines = (list: BalanceRow[], value: (b: BalanceRow) => string) =>
+      list.length === 1 ? value(list[0]!) : list.map((b) => `${b.name} ${value(b)}`).join("\n");
+    const cells: Cell[] = [e.department, e.category, e.active ? e.name : `${e.name} (비활성)`];
+    for (const c of deducting) {
+      const shown = columnBalances(c, byType).filter((b) => b.remainingMinutes !== null);
+      const width = c.scope ? 3 : 4;
+      if (shown.length === 0) {
+        cells.push(...Array<string>(width).fill("-"));
+        continue;
+      }
+      cells.push(
+        lines(shown, (b) => f(b.grantedMinutes)),
+        lines(shown, (b) => f(b.usedMinutes)),
+        lines(shown, (b) => f(b.remainingMinutes!)),
+        ...(c.scope ? [] : [lines(shown, rowScope)]),
+      );
+    }
+    for (const c of usedOnly) cells.push(f(columnBalances(c, byType).reduce((sum, b) => sum + b.usedMinutes, 0)));
+    ws.getRow(rowNo++).values = cells;
+  }
+
+  for (let r = 1; r < rowNo; r++) {
     for (let c = 1; c <= colCount; c++) {
       const cell = ws.getCell(r, c);
       cell.border = ALL_BORDERS;
-      if (r < bodyTop) {
-        cell.font = { bold: true };
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F2F0" } };
+      if (r <= 2) {
+        cell.font = HEADER_FONT;
+        cell.fill = HEADER_FILL;
         cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
       } else {
-        cell.alignment = { vertical: "top", wrapText: true };
+        cell.font = BODY_FONT;
+        cell.alignment = { horizontal: "center", vertical: "top", wrapText: true };
       }
     }
   }
-  for (let c = 0; c < colCount; c++) ws.getColumn(c + 1).width = Math.min(40, Math.max(6, (widths[c] ?? 0) + 2));
-  ws.views = [{ state: "frozen", xSplit: 1, ySplit: bodyTop - 1 }];
-  ws.pageSetup.printTitlesRow = `${headTop}:${bodyTop - 1}`;
+}
+
+/** 휴가원 관리대장 엑셀 (year 의 기록. today: 부여 후 기간 소멸의 올해 잔여 기준) */
+export async function buildLedgerWorkbook(db: Db, year: number, today: string): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "leave-flow";
+  usageSheet(wb, db, year);
+  grantsSheet(wb, db, year);
+  remainingSheet(wb, db, year, today);
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

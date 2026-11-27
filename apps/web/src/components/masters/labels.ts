@@ -1,9 +1,6 @@
 // 기준정보 화면 표시용 문구
 import {
   WEEKDAY_LABELS,
-  expirePeriod,
-  isCumulativeMode,
-  yearOf,
   type BalanceMode,
   type LeaveType,
   type LeaveTypeTarget,
@@ -55,20 +52,4 @@ export function balanceRuleText(t: BalanceRule & Pick<LeaveType, "hideWhenEmpty"
     return t.hideWhenEmpty ? "해를 넘겨 쌓이고, 남은 양이 없으면 휴가원에서 숨김" : "해를 넘겨 쌓임";
   }
   return BALANCE_MODE_LABELS[t.balanceMode].desc;
-}
-
-/** 그 해 잔여를 계산한 범위 (표 머리글): "2026년", "누적", "2026.3.1~2027.2.28", "오늘 쓸 수 있는 양" */
-export function balanceScopeText(t: BalanceRule, year: number, today: string): string {
-  if (isCumulativeMode(t.balanceMode)) return "누적";
-  if (t.balanceMode === "expire_date" && t.expireMonth && t.expireDay) {
-    const { start, end } = expirePeriod(year, t.expireMonth, t.expireDay);
-    const short = (d: string) => `${Number(d.slice(5, 7))}.${Number(d.slice(8, 10))}`;
-    return `${start.slice(0, 4)}.${short(start)}~${end.slice(0, 4)}.${short(end)}`;
-  }
-  if (t.balanceMode === "grant_period") {
-    const thisYear = yearOf(today);
-    if (year === thisYear) return "오늘 쓸 수 있는 양";
-    return year < thisYear ? `${year}.12.31 기준` : `${year}.1.1 기준`;
-  }
-  return `${year}년`;
 }

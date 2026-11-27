@@ -1,6 +1,6 @@
-import type { LeaveDayUsage } from "./leave.ts";
+import { leaveTypeLabel, type LeaveDayUsage } from "./leave.ts";
 import { addDays, localToday, yearOf } from "./time.ts";
-import type { BalanceMode, BalanceRow } from "./types.ts";
+import type { BalanceMode, BalanceRow, LeaveType } from "./types.ts";
 
 export interface BalanceTypeInfo {
   id: number;
@@ -377,4 +377,51 @@ function grantPeriodTotals(
   const used = alive.reduce((s, l) => s + l.consumed, 0) + (debtAsOf ?? debt) + laterUsed;
   const current = alive.reduce((s, l) => s + l.currentTaken, 0) + currentDebtAsOf + currentCovered + laterCurrent;
   return { granted, used, current, year: yearOf(asOf), periodStart: null, periodEnd: null, asOf };
+}
+
+type BalanceRule = Pick<LeaveType, "balanceMode" | "expireMonth" | "expireDay">;
+
+/** 그 해 잔여를 계산한 범위 (표 머리글): "2026년", "누적", "2026.3.1~2027.2.28", "오늘 쓸 수 있는 양" */
+export function balanceScopeText(t: BalanceRule, year: number, today: string): string {
+  if (isCumulativeMode(t.balanceMode)) return "누적";
+  if (t.balanceMode === "expire_date" && t.expireMonth && t.expireDay) {
+    const { start, end } = expirePeriod(year, t.expireMonth, t.expireDay);
+    const short = (d: string) => `${Number(d.slice(5, 7))}.${Number(d.slice(8, 10))}`;
+    return `${start.slice(0, 4)}.${short(start)}~${end.slice(0, 4)}.${short(end)}`;
+  }
+  if (t.balanceMode === "grant_period") {
+    const thisYear = yearOf(today);
+    if (year === thisYear) return "오늘 쓸 수 있는 양";
+    return year < thisYear ? `${year}.12.31 기준` : `${year}.1.1 기준`;
+  }
+  return `${year}년`;
+}
+
+/** 잔여 현황 열 하나 = 표시 이름이 같은 휴가 종류 묶음 (예: 연차(직원)·연차(강사) → "연차") */
+export interface LeaveTypeColumn {
+  label: string;
+  types: LeaveType[];
+  /** 묶음의 계산 범위가 모두 같으면 머리글에, 다르면 칸마다 표시 */
+  scope: string | null;
+}
+
+/** 보이는 이름이 같은 종류끼리 한 열로 (한 직원에게는 그중 하나만 적용됨). 표시 순서 유지 */
+export function leaveTypeColumns(types: readonly LeaveType[], scopeOf: (t: LeaveType) => string): LeaveTypeColumn[] {
+  const columns: LeaveTypeColumn[] = [];
+  for (const t of types) {
+    const label = leaveTypeLabel(t);
+    const col = columns.find((c) => c.label === label);
+    if (col) col.types.push(t);
+    else columns.push({ label, types: [t], scope: null });
+  }
+  for (const c of columns) {
+    const scopes = new Set(c.types.map(scopeOf));
+    c.scope = scopes.size === 1 ? [...scopes][0]! : null;
+  }
+  return columns;
+}
+
+/** 이 직원의 그 열 종류들 (보통 하나, 소속·구분이 바뀐 직원은 둘 이상) */
+export function columnBalances(c: LeaveTypeColumn, byType: ReadonlyMap<number, BalanceRow>): BalanceRow[] {
+  return c.types.map((t) => byType.get(t.id)).filter((b): b is BalanceRow => b !== undefined);
 }

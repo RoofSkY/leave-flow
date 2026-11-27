@@ -1,6 +1,6 @@
 {
 	"name": "leave-flow",
-	"version": "0.2.2",
+	"version": "1.0.0",
 	"private": true,
 	"description": "휴가원·시간외근무 신청서 관리",
 	"type": "module",
