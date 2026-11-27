@@ -186,7 +186,7 @@ describe("직원 영구 삭제", () => {
     expect((await inject(t, "POST", `/api/employees/${t.hong}/delete`, { confirmName: "홍길동" })).statusCode).toBe(204);
 
     expect(queryAll(t.db, "SELECT employee_id FROM leave_grants")).toEqual([{ employee_id: t.kim }]);
-    const doc = (await inject(t, "GET", `/api/overtime/${id}`)).json<OvertimeRequest>();
+    const doc = (await inject(t, "GET", "/api/overtime?status=all")).json<OvertimeRequest[]>().find((d) => d.id === id)!;
     expect(doc.targets.map((x) => [x.employeeName, x.employeeDeleted])).toEqual([
       ["홍길동", true],
       ["김철수", false],
@@ -275,7 +275,7 @@ describe("휴가 종류 영구 삭제", () => {
 });
 
 describe("휴가원 영구 삭제", () => {
-  it("취소된 휴가원만, 지우기 직전 백업, 항목·출력 기록도 지움, 이력 한 줄", async () => {
+  it("취소된 휴가원만, 지우기 직전 백업, 항목도 지움, 이력 한 줄", async () => {
     const t = await setup();
     const request = await createLeave(t, t.hong, t.annual);
     await inject(t, "POST", `/api/leave-requests/${request.id}/print`);
@@ -289,7 +289,6 @@ describe("휴가원 영구 삭제", () => {
     expect(backups(t)).toHaveLength(1);
     expect((await inject(t, "GET", `/api/leave-requests/${request.id}`)).statusCode).toBe(404);
     expect(queryAll(t.db, "SELECT * FROM leave_request_items")).toEqual([]);
-    expect(queryAll(t.db, "SELECT * FROM print_logs")).toEqual([]);
     expect(deleteAudits(t)).toEqual([
       { entity: "leave_request", summary: "홍길동 휴가원 영구 삭제 (연차 2026.10.26. 10:00 ~ 19:00)" },
     ]);

@@ -41,5 +41,5 @@ export function useAccrualTypes() {
   /** 대상자들의 적립 종류 이름 (겹치지 않게, 대상 순서): "대체휴가(직원)·대체휴가(요원)" */
   const namesOf = (targets: readonly OvertimeTarget[]) =>
     [...new Set(targets.map((t) => allTypes.find((x) => x.id === t.leaveTypeId)?.name).filter((n) => n !== undefined))].join("·");
-  return { loading: types.isPending, optionsFor, namesOf };
+  return { optionsFor, namesOf };
 }

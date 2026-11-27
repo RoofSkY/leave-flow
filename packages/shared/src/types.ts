@@ -463,8 +463,6 @@ export interface BackupFile {
 
 export interface SystemInfo {
   version: string;
-  dataDir: string;
-  port: number;
   updateRepo: string | null;
   autoUpdate: boolean;
   lastUpdateCheckAt: string | null;

@@ -13,8 +13,8 @@
 	},
 	"scripts": {
 		"dev": "node scripts/dev.mjs",
-		"dev:server": "npm run dev -w @leave-flow/server",
-		"dev:web": "npm run dev -w @leave-flow/web",
+		"dev:server": "node scripts/dev.mjs server",
+		"dev:web": "node scripts/dev.mjs web",
 		"build": "npm run build -w @leave-flow/web && npm run build -w @leave-flow/server",
 		"package": "node scripts/package-release.mjs",
 		"test": "vitest run",

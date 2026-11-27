@@ -76,6 +76,47 @@ function FilterGroup({ label, empty, children }: { label: string; empty: string;
   );
 }
 
+/** 소속·구분·직원 체크 목록 (필터 창) */
+function FilterFields({ value, onChange }: { value: EmployeeFilterValue; onChange: (value: EmployeeFilterValue) => void }) {
+  const departmentsQ = useDepartments();
+  const categoriesQ = useCategories();
+  // 지난 기록도 거를 수 있게 비활성 직원까지 (영구 삭제된 직원은 고를 수 없음)
+  const employeesQ = useEmployees(true);
+  const error = departmentsQ.error ?? categoriesQ.error ?? employeesQ.error;
+  if (error) return <ErrorText error={error} />;
+  if (departmentsQ.isPending || categoriesQ.isPending || employeesQ.isPending) return <Spinner />;
+  // 소속·구분은 목록 순서로
+  const departmentNames = (departmentsQ.data ?? []).map((d) => d.name);
+  const categoryNames = (categoriesQ.data ?? []).map((c) => c.name);
+
+  return (
+    <>
+      <FilterGroup label="소속" empty="등록된 소속이 없습니다.">
+        {nameChecks(departmentNames, value.departments, (departments) => onChange({ ...value, departments }))}
+      </FilterGroup>
+      <FilterGroup label="구분" empty="등록된 구분이 없습니다.">
+        {nameChecks(categoryNames, value.categories, (categories) => onChange({ ...value, categories }))}
+      </FilterGroup>
+      <FilterGroup label="직원" empty="등록된 직원이 없습니다.">
+        {(employeesQ.data ?? []).map((e) => (
+          <Checkbox
+            key={e.id}
+            label={
+              <span className="emp-filter-emp">
+                <ColorDot color={e.color} />
+                {e.name}
+                {!e.active && <span className="faint">비활성</span>}
+              </span>
+            }
+            checked={value.employeeIds.includes(e.id)}
+            onChange={(on) => onChange({ ...value, employeeIds: toggle(value.employeeIds, e.id, on) })}
+          />
+        ))}
+      </FilterGroup>
+    </>
+  );
+}
+
 const POP_WIDTH = 380;
 const POP_GAP = 4;
 const VIEW_MARGIN = 16;
@@ -94,10 +135,6 @@ export function EmployeeFilter({
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<CSSProperties | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const departmentsQ = useDepartments();
-  const categoriesQ = useCategories();
-  // 지난 기록도 거를 수 있게 비활성 직원까지 (영구 삭제된 직원은 고를 수 없음)
-  const employeesQ = useEmployees(true);
   const count = countOf(value);
 
   const place = () => {
@@ -135,12 +172,6 @@ export function EmployeeFilter({
     };
   }, [open]);
 
-  // 소속·구분은 목록 순서로
-  const departmentNames = (departmentsQ.data ?? []).map((d) => d.name);
-  const categoryNames = (categoriesQ.data ?? []).map((c) => c.name);
-  const error = departmentsQ.error ?? categoriesQ.error ?? employeesQ.error;
-  const pending = departmentsQ.isPending || categoriesQ.isPending || employeesQ.isPending;
-
   return (
     <div ref={wrapRef}>
       <Button
@@ -161,37 +192,8 @@ export function EmployeeFilter({
               모두 해제
             </Button>
           </div>
-          {error ? (
-            <ErrorText error={error} />
-          ) : pending ? (
-            <Spinner />
-          ) : (
-            <>
-              <FilterGroup label="소속" empty="등록된 소속이 없습니다.">
-                {nameChecks(departmentNames, value.departments, (departments) => onChange({ ...value, departments }))}
-              </FilterGroup>
-              <FilterGroup label="구분" empty="등록된 구분이 없습니다.">
-                {nameChecks(categoryNames, value.categories, (categories) => onChange({ ...value, categories }))}
-              </FilterGroup>
-              <FilterGroup label="직원" empty="등록된 직원이 없습니다.">
-                {(employeesQ.data ?? []).map((e) => (
-                  <Checkbox
-                    key={e.id}
-                    label={
-                      <span className="emp-filter-emp">
-                        <ColorDot color={e.color} />
-                        {e.name}
-                        {!e.active && <span className="faint">비활성</span>}
-                      </span>
-                    }
-                    checked={value.employeeIds.includes(e.id)}
-                    onChange={(on) => onChange({ ...value, employeeIds: toggle(value.employeeIds, e.id, on) })}
-                  />
-                ))}
-              </FilterGroup>
-              {hint && <p className="emp-filter-hint">{hint}</p>}
-            </>
-          )}
+          <FilterFields value={value} onChange={onChange} />
+          {hint && <p className="emp-filter-hint">{hint}</p>}
         </div>
       )}
     </div>

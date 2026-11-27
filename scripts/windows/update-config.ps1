@@ -35,34 +35,11 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "common.ps1")
 $TaskName = "leave-flow"
 $FirewallRule = "leave-flow"
 
 function Fail($msg) { Write-Host "설정을 바꾸지 못했습니다: $msg" -ForegroundColor Red; exit 1 }
-# 서버 상태 확인 주소 (launcher/state.mjs healthUrl 과 같은 규칙: 모든 주소에서 받으면 127.0.0.1, IPv6 는 [ ])
-function Health-Url($cfgHost, $port) {
-  $h = ""
-  if ($cfgHost) { $h = ([string]$cfgHost).Trim() }
-  if ($h -eq "" -or $h -eq "0.0.0.0" -or $h -eq "::" -or $h -eq "[::]") { $h = "127.0.0.1" }
-  elseif ($h.Contains(":") -and -not $h.StartsWith("[")) { $h = "[$h]" }
-  return "http://${h}:$port/api/health"
-}
-# 트레이(tray.ps1)를 끄면 launcher 가 서버와 함께 정상 종료함. 15초 안에 끝나지 않으면 이 설치 폴더의 node 만 강제 종료
-function Stop-LeaveFlow {
-  $trayScript = Join-Path $InstallDir "tray.ps1"
-  Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($trayScript, [StringComparison]::OrdinalIgnoreCase) -ge 0 } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-  $nodeDir = Join-Path $InstallDir "node"
-  $deadline = (Get-Date).AddSeconds(15)
-  for (;;) {
-    $left = @(Get-Process -Name node -ErrorAction SilentlyContinue |
-      Where-Object { $_.Path -and $_.Path.StartsWith($nodeDir, [StringComparison]::OrdinalIgnoreCase) })
-    if ($left.Count -eq 0) { return }
-    if ((Get-Date) -gt $deadline) { $left | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; return }
-    Start-Sleep -Milliseconds 500
-  }
-}
 # 끄기를 뜻하는 값 (빈 값은 PowerShell 5.1 에서 전달되지 않으므로 none/off 도 받음)
 function Is-Off($value) { return (-not $value) -or ([string]$value).Trim() -in @("none", "off", "null") }
 
@@ -90,7 +67,7 @@ function Set-Value($name, $value) {
 }
 
 Write-Host "바꾼 값:"
-$oldPort = 80
+$oldPort = 8082
 if ($config.port) { $oldPort = [int]$config.port }
 if ($PSBoundParameters.ContainsKey("Port")) {
   if ($Port -eq 5000) { Fail "5000번 포트는 같은 PC의 auto-ansimtalk 가 사용하므로 쓸 수 없습니다." }
@@ -136,7 +113,7 @@ if ($newPort -ne $oldPort) {
 # 다시 시작
 if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
   Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-  Stop-LeaveFlow
+  Stop-LeaveFlow $InstallDir
   Start-ScheduledTask -TaskName $TaskName
 } else {
   Fail "등록된 예약 작업이 없습니다. install.ps1 로 다시 설치하세요."

@@ -4,7 +4,7 @@ import { categoryInput, type Category } from "@leave-flow/shared";
 import { Button, Checkbox, EmptyState, ErrorText, Spinner, TextInput, useConfirm, useToast } from "../ui/index.tsx";
 import { api, errorMessage } from "../../lib/api.ts";
 import { qk, useCategories } from "../../lib/queries.ts";
-import { Chevron } from "./DepartmentsCard.tsx";
+import { ChevronIcon } from "../ui/icons.tsx";
 
 /** 구분 이름 검사 (서버와 같은 규칙) */
 function nameError(name: string): string | null {
@@ -214,7 +214,7 @@ export function CategoriesCard() {
                     disabled={i === 0 || update.isPending}
                     onClick={() => move(i, -1)}
                   >
-                    <Chevron up />
+                    <ChevronIcon dir="up" size={12} />
                   </Button>
                   <Button
                     size="sm"
@@ -225,7 +225,7 @@ export function CategoriesCard() {
                     disabled={i === list.length - 1 || update.isPending}
                     onClick={() => move(i, 1)}
                   >
-                    <Chevron />
+                    <ChevronIcon dir="down" size={12} />
                   </Button>
                   <Button size="sm" onClick={() => setEditing({ id: c.id, name: c.name })}>
                     이름 바꾸기

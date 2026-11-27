@@ -43,8 +43,6 @@ export function registerSystemRoutes(
     const state = readLauncherState(config.homeDir);
     return {
       version: ctx.version,
-      dataDir: config.dataDir,
-      port: config.port,
       updateRepo: config.updateRepo,
       autoUpdate: config.autoUpdate && ctx.version !== "dev" && !!config.updateRepo,
       lastUpdateCheckAt: getValue<string | null>(db, SYSTEM_KEYS.lastUpdateCheckAt, null),
@@ -75,7 +73,7 @@ export function registerSystemRoutes(
     if (dir) {
       const error = await checkWritableDir(dir);
       if (error) {
-        throw badRequest(`NAS 백업 폴더에 쓸 수 없습니다: ${error} (주소, 공유폴더 쓰기 권한, 서버 실행 계정을 확인하세요)`);
+        throw badRequest(`NAS 백업 폴더에 쓸 수 없습니다: ${error} (주소, 공유폴더 쓰기 권한, 출결 PC에 로그인한 Windows 계정을 확인하세요)`);
       }
     }
     const before = ctx.config.nasBackupDir;

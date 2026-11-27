@@ -21,13 +21,9 @@ function fail(message) {
   process.exit(1);
 }
 
-/** 자동 업데이트 저장소 "owner/repo": LEAVE_FLOW_UPDATE_REPO, GitHub Actions 의 GITHUB_REPOSITORY, package.json repository 순 */
+/** 자동 업데이트 저장소 "owner/repo": LEAVE_FLOW_UPDATE_REPO, GitHub Actions 의 GITHUB_REPOSITORY 순. 없으면 null */
 function updateRepo() {
-  const fromEnv = process.env.LEAVE_FLOW_UPDATE_REPO ?? process.env.GITHUB_REPOSITORY;
-  if (fromEnv) return fromEnv;
-  const r = typeof pkg.repository === "string" ? pkg.repository : pkg.repository?.url;
-  const m = r && /github(?:\.com[/:]|:)([\w.-]+\/[\w.-]+?)(?:\.git)?$/.exec(r);
-  return m ? m[1] : null;
+  return (process.env.LEAVE_FLOW_UPDATE_REPO ?? process.env.GITHUB_REPOSITORY) || null;
 }
 
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/.test(version)) fail(`package.json 버전 형식이 올바르지 않습니다: ${version}`);
@@ -65,7 +61,7 @@ writeFileSync(
   path.join(outDir, "config.example.json"),
   `${JSON.stringify(
     {
-      port: 80,
+      port: 8082,
       nasBackupDir: "\\\\NAS주소\\backup\\leave-flow",
       backupTime: "12:30",
       backupKeepDays: 30,

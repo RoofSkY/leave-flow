@@ -186,7 +186,6 @@ export type LeaveTypeInput = z.infer<typeof leaveTypeInput>;
 /**
  * 관리 화면에서 직접 입력하는 부여량: 일 + 시간 + 분(10분 단위).
  * 서버가 직원마다 "1일 = 그 직원의 하루 근무시간"으로 분으로 바꿔 저장한다.
- * 시간은 소수로 10분 단위까지 받음 (분 없이 시간만 보내는 가져오기 스크립트용).
  */
 const grantAmountFields = {
   days: z
@@ -196,9 +195,9 @@ const grantAmountFields = {
     .max(9999, "부여량(일)은 9999 이하로 입력하세요."),
   hours: z
     .number({ error: "부여량(시간)을 숫자로 입력하세요." })
+    .int("부여량(시간)은 정수로 입력하세요.")
     .min(0, "부여량은 0 이상이어야 합니다.")
-    .max(99999, "부여량(시간)이 너무 큽니다.")
-    .refine((h) => Number.isInteger(Math.round(h * 6 * 1000) / 1000), "부여량(시간)은 10분 단위까지 입력할 수 있습니다."),
+    .max(99999, "부여량(시간)이 너무 큽니다."),
   minutes: z
     .number({ error: "부여량(분)을 숫자로 입력하세요." })
     .int("부여량(분)은 정수로 입력하세요.")
@@ -280,22 +279,14 @@ export const openingBalanceInput = z
   });
 export type OpeningBalanceInput = z.infer<typeof openingBalanceInput>;
 
-/** 설정 저장. 보낸 항목만 바꿈 (화면의 섹션별 저장) */
+/** 설정 저장 (근무시간 기본값) */
 export const settingsInput = z
   .object({
     /** 직원 추가 시 근무시간 기본값 */
-    defaultWorkStart: timeString.optional(),
-    defaultWorkEnd: timeString.optional(),
+    defaultWorkStart: timeString,
+    defaultWorkEnd: timeString,
   })
-  .superRefine((v, ctx) => {
-    if ((v.defaultWorkStart === undefined) !== (v.defaultWorkEnd === undefined)) {
-      ctx.addIssue({ code: "custom", message: "근무 시작·종료 기본값을 함께 입력하세요.", path: ["defaultWorkEnd"] });
-      return;
-    }
-    if (v.defaultWorkStart !== undefined && v.defaultWorkEnd !== undefined) {
-      addWorkHourIssues(v.defaultWorkStart, v.defaultWorkEnd, ctx, "defaultWorkStart", "defaultWorkEnd");
-    }
-  });
+  .superRefine((v, ctx) => addWorkHourIssues(v.defaultWorkStart, v.defaultWorkEnd, ctx, "defaultWorkStart", "defaultWorkEnd"));
 
 /** NAS 백업 폴더 저장. 빈 값 = NAS 백업 끔 */
 export const nasBackupDirInput = z.object({

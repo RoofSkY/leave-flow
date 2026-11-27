@@ -178,7 +178,7 @@ export async function deleteLeaveType(ctx: AppContext, ip: string, id: number, c
 
 /**
  * 휴가원 영구 삭제. 취소된 휴가원만 (영구 삭제된 직원의 휴가원은 취소할 수 없으므로 상태와 관계없이).
- * 지우기 직전에 백업. 출력 기록도 함께 지운다.
+ * 지우기 직전에 백업.
  */
 export async function deleteLeaveRequest(ctx: AppContext, ip: string, id: number): Promise<void> {
   const { db } = ctx;
@@ -196,7 +196,6 @@ export async function deleteLeaveRequest(ctx: AppContext, ip: string, id: number
   transaction(db, () => {
     const r = assertDeletable();
     execute(db, "DELETE FROM leave_requests WHERE id = ?", [id]); // 항목은 함께 지워짐 (ON DELETE CASCADE)
-    execute(db, "DELETE FROM print_logs WHERE doc_type = 'leave' AND doc_id = ?", [id]);
     cleanupDeletedRows(db);
     const now = ctx.now();
     writeAudit(

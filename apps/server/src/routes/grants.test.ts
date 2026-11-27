@@ -115,6 +115,7 @@ describe("부여 내역 API", () => {
     expect((await post({ leaveTypeId: 999 })).statusCode).toBe(400);
     expect((await post({ leaveTypeId: inactive })).statusCode).toBe(409);
     expect((await post({ hours: 1.25 })).statusCode).toBe(400);
+    expect((await post({ hours: 1.5 })).statusCode).toBe(400);
     expect((await post({ days: 0, hours: 0 })).statusCode).toBe(400);
     expect((await post({ grantDate: "2026-02-30" })).statusCode).toBe(400);
     expect(audits(db)).toHaveLength(0);

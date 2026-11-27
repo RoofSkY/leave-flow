@@ -1,18 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { departmentInput, type Department } from "@leave-flow/shared";
+import { ChevronIcon } from "../ui/icons.tsx";
 import { Button, EmptyState, ErrorText, Spinner, TextInput, useConfirm, useToast } from "../ui/index.tsx";
 import { api, errorMessage } from "../../lib/api.ts";
 import { qk, useDepartments } from "../../lib/queries.ts";
-
-/** 위·아래 화살표 (글자 화살표는 Windows에서 그림 문자로 보일 수 있어 SVG 사용) */
-export function Chevron({ up }: { up?: boolean }) {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden style={up ? { transform: "rotate(180deg)" } : undefined}>
-      <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 /** 소속 이름 검사 (서버와 같은 규칙) */
 function nameError(name: string): string | null {
@@ -194,7 +186,7 @@ export function DepartmentsCard() {
                     disabled={i === 0 || update.isPending}
                     onClick={() => move(i, -1)}
                   >
-                    <Chevron up />
+                    <ChevronIcon dir="up" size={12} />
                   </Button>
                   <Button
                     size="sm"
@@ -205,7 +197,7 @@ export function DepartmentsCard() {
                     disabled={i === list.length - 1 || update.isPending}
                     onClick={() => move(i, 1)}
                   >
-                    <Chevron />
+                    <ChevronIcon dir="down" size={12} />
                   </Button>
                   <Button size="sm" onClick={() => setEditing({ id: d.id, name: d.name })}>
                     이름 바꾸기

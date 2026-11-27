@@ -823,7 +823,7 @@ describe("휴가원 출력", () => {
       { leaveTypeId: substitute, name: "대체휴가", checked: false },
     ]);
     // 미리보기는 기록하지 않음
-    expect(queryAll(s.db, "SELECT * FROM print_logs")).toEqual([]);
+    expect(queryOne(s.db, "SELECT last_printed_at FROM leave_requests")).toEqual({ last_printed_at: null });
     expect(s.audits("print")).toEqual([]);
   });
 
@@ -863,7 +863,7 @@ describe("휴가원 출력", () => {
     expect(data.checkboxes.map((c) => c.leaveTypeId)).toEqual([s.annual, s.sick, hidden, kept, usedNow]);
   });
 
-  it("출력: 출력 기록 + 최근 출력일시 + 변경 이력, 취소된 휴가원은 409", async () => {
+  it("출력: 최근 출력일시 + 변경 이력, 취소된 휴가원은 409", async () => {
     const s = await setup();
     const { request } = await s.createOk([
       { leaveTypeId: s.annual, startAt: "2026-10-26T10:00", endAt: "2026-10-26T19:00" },
@@ -871,14 +871,13 @@ describe("휴가원 출력", () => {
     const res = await s.app.inject({ method: "POST", url: `/api/leave-requests/${request.id}/print` });
     expect(res.statusCode).toBe(200);
     expect(res.json<LeavePrintData>().request.lastPrintedAt).toBe("2026-10-19 09:00:00");
-    expect(queryOne(s.db, "SELECT doc_type, doc_id FROM print_logs")).toEqual({ doc_type: "leave", doc_id: request.id });
     expect(s.audits("print")).toHaveLength(1);
 
     await s.app.inject({ method: "POST", url: `/api/leave-requests/${request.id}/cancel` });
     expect((await s.app.inject({ method: "POST", url: `/api/leave-requests/${request.id}/print` })).statusCode).toBe(409);
     expect((await s.app.inject({ url: `/api/leave-requests/${request.id}/print-data` })).statusCode).toBe(409);
     expect((await s.app.inject({ url: "/api/leave-requests/999/print-data" })).statusCode).toBe(404);
-    expect(queryAll(s.db, "SELECT * FROM print_logs")).toHaveLength(1);
+    expect(s.audits("print")).toHaveLength(1);
   });
 
   it("미리보기·출력의 기준일은 입력 순서와 관계없이 가장 이른 항목의 시작일", async () => {

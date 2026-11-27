@@ -193,7 +193,6 @@ describe("일반 시간외근무", () => {
     expect(again.body.request.lastPrintedAt).toBe("2026-11-02 09:00:00");
     expect(overtimeGrants(t, created.id)).toHaveLength(2);
     expect(granted(t, t.hong, t.comp)).toBe(150);
-    expect(queryAll(t.db, "SELECT * FROM print_logs WHERE doc_type = 'overtime'")).toHaveLength(2);
     expect(audits(t, created.id).map((a) => a.action)).toEqual(["create", "accrue", "print", "print"]);
   });
 
@@ -362,7 +361,6 @@ describe("일반 시간외근무", () => {
     expect(kindChange.status).toBe(400);
     expect(kindChange.body.error).toBe("신청서 종류는 바꿀 수 없습니다.");
 
-    expect((await get(t, "/api/overtime/9999")).status).toBe(404);
     expect((await put(t, "/api/overtime/9999", generalBody([t.kim], t.comp))).status).toBe(404);
     expect((await post(t, "/api/overtime/9999/print")).status).toBe(404);
     expect((await post(t, "/api/overtime/9999/cancel")).status).toBe(404);
@@ -379,7 +377,8 @@ describe("일반 시간외근무", () => {
     const second = await put(t, url, { ...generalBody([t.hong], t.comp, { minutes: 90 }), baseUpdatedAt: created.updatedAt });
     expect(second.status).toBe(409);
     expect(second.body.error).toContain("다른 사람이 이 신청서를 먼저 수정했습니다.");
-    expect((await get<OvertimeRequest>(t, url)).body.minutes).toBe(60);
+    const list = await get<OvertimeRequest[]>(t, "/api/overtime?status=all");
+    expect(list.body.find((d) => d.id === created.id)?.minutes).toBe(60);
     expect(granted(t, t.hong, t.comp)).toBe(60);
 
     const noBase = await t.app.inject({ method: "PUT", url, payload: generalBody([t.hong], t.comp) });

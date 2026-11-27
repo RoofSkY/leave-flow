@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Config } from "../config.ts";
+import { loadConfig, type Config } from "../config.ts";
 import { queryAll } from "../db/index.ts";
 import { createTestApp, testConfig } from "../testing.ts";
 import { SYSTEM_KEYS, getValue } from "./settings.ts";
@@ -17,9 +18,15 @@ import {
   runScheduledUpdateCheck,
   safeEntryPath,
   startUpdateScheduler,
-  updateCheckPeriodMs,
   writeLauncherState,
 } from "./updater.ts";
+
+/** config.json 에 updateCheckHours 를 넣었을 때 서버가 쓰는 값 */
+function configuredCheckHours(value: unknown): number {
+  const home = mkdtempSync(path.join(os.tmpdir(), "leave-flow-config-"));
+  writeFileSync(path.join(home, "config.json"), JSON.stringify({ updateCheckHours: value }));
+  return loadConfig({ LEAVE_FLOW_HOME: home }).updateCheckHours;
+}
 
 /** 다른 프로세스가 파일을 ms 동안 열어 둠 (launcher·백신이 state.json 을 읽는 상황). 열린 뒤 resolve */
 async function holdOpen(file: string, ms: number): Promise<{ done: Promise<void> }> {
@@ -169,31 +176,30 @@ describe("업데이트 확인 예약", () => {
     }
   });
 
-  it("updateCheckHours 가 너무 크거나 숫자가 아니어도 확인 주기는 1시간~24일", () => {
-    const hour = 3_600_000;
-    expect(updateCheckPeriodMs(6)).toBe(6 * hour);
-    expect(updateCheckPeriodMs("12")).toBe(12 * hour);
-    expect(updateCheckPeriodMs(0.01)).toBe(hour);
-    expect(updateCheckPeriodMs(720)).toBe(576 * hour);
-    for (const bad of [Number.NaN, "abc", null, undefined, 0, -3, Number.POSITIVE_INFINITY, true]) {
-      expect(updateCheckPeriodMs(bad), String(bad)).toBe(6 * hour);
+  it("config.json 의 updateCheckHours 는 1~576시간으로 맞춤, 숫자가 아니면 6시간", () => {
+    expect(configuredCheckHours(6)).toBe(6);
+    expect(configuredCheckHours(0.01)).toBe(1);
+    expect(configuredCheckHours(0)).toBe(1);
+    expect(configuredCheckHours(-3)).toBe(1);
+    expect(configuredCheckHours(720)).toBe(576);
+    expect(configuredCheckHours(1e12)).toBe(576);
+    for (const bad of ["12", "abc", null, true, undefined]) {
+      expect(configuredCheckHours(bad), String(bad)).toBe(6);
     }
-    for (const hours of [720, 1e12, Number.NaN, "abc"]) {
-      const ms = updateCheckPeriodMs(hours);
-      expect(ms).toBeGreaterThanOrEqual(hour);
-      expect(ms).toBeLessThanOrEqual(2_147_483_647);
-    }
+    // 가장 긴 주기도 setTimeout 한계(약 24.8일)보다 짧음
+    expect(576 * 3_600_000).toBeLessThanOrEqual(2_147_483_647);
   });
 
-  it("updateCheckHours 가 720 이거나 숫자가 아니어도 확인을 몰아서 하지 않음", async () => {
-    for (const hours of [720, Number.NaN, "abc" as unknown as number]) {
+  it("config.json 의 updateCheckHours 가 720 이거나 숫자가 아니어도 확인을 몰아서 하지 않음", async () => {
+    for (const value of [720, "abc"]) {
+      const hours = configuredCheckHours(value);
       const { ctx, exitCodes } = await scheduledApp({ autoUpdate: false, updateCheckHours: hours });
       const calls = stubGitHub(ctx.version);
       fakeTimers();
       const stop = startUpdateScheduler(ctx, (c) => exitCodes.push(c));
       try {
         await vi.advanceTimersByTimeAsync(2 * 60_000 + 30 * 60_000);
-        expect(calls, String(hours)).toEqual([LATEST_URL]);
+        expect(calls, String(value)).toEqual([LATEST_URL]);
       } finally {
         stop();
         vi.useRealTimers();

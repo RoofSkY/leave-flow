@@ -21,7 +21,7 @@
 param(
   # 없으면 설치되어 있는 폴더(예약 작업 기준), 처음이면 문서\leave-flow
   [string]$InstallDir,
-  [int]$Port = 80,
+  [int]$Port = 8082,
   # leave-flow-<버전>.zip 경로. 없으면 이 스크립트가 있는 압축 해제 폴더 또는 옆의 zip 사용
   [string]$ReleaseZip,
   # 미리 받아 둔 node-v24.x.x-win-x64.zip (없으면 nodejs.org 에서 받음)
@@ -37,6 +37,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
+. (Join-Path $PSScriptRoot "common.ps1")
 # 설치 프로그램(exe)이 출력을 받아 진행 상황을 보여 줌 → 한글이 깨지지 않게 UTF-8 로
 if ([Console]::IsOutputRedirected) { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false }
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
@@ -63,35 +64,11 @@ function Read-Json($path) {
 function Version-Key($v) {
   try { return [version](($v -replace '^v', '') -replace '-.*$', '') } catch { return [version]"0.0.0" }
 }
-# 서버 상태 확인 주소 (launcher/state.mjs healthUrl 과 같은 규칙: 모든 주소에서 받으면 127.0.0.1, IPv6 는 [ ])
-function Health-Url($cfgHost, $port) {
-  $h = ""
-  if ($cfgHost) { $h = ([string]$cfgHost).Trim() }
-  if ($h -eq "" -or $h -eq "0.0.0.0" -or $h -eq "::" -or $h -eq "[::]") { $h = "127.0.0.1" }
-  elseif ($h.Contains(":") -and -not $h.StartsWith("[")) { $h = "[$h]" }
-  return "http://${h}:$port/api/health"
-}
 # 설치 폴더 기준 경로 (절대 경로면 그대로 — 서버 config.ts 와 같은 규칙)
 function Home-Path($value, $default) {
   $p = $default
   if ($value) { $p = [string]$value }
   return [IO.Path]::GetFullPath([IO.Path]::Combine($InstallDir, $p))
-}
-# 트레이(tray.ps1)를 끄면 launcher 가 서버와 함께 정상 종료함. 15초 안에 끝나지 않으면 이 설치 폴더의 node 만 강제 종료
-function Stop-LeaveFlow {
-  $trayScript = Join-Path $InstallDir "tray.ps1"
-  Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($trayScript, [StringComparison]::OrdinalIgnoreCase) -ge 0 } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-  $nodeDir = Join-Path $InstallDir "node"
-  $deadline = (Get-Date).AddSeconds(15)
-  for (;;) {
-    $left = @(Get-Process -Name node -ErrorAction SilentlyContinue |
-      Where-Object { $_.Path -and $_.Path.StartsWith($nodeDir, [StringComparison]::OrdinalIgnoreCase) })
-    if ($left.Count -eq 0) { return }
-    if ((Get-Date) -gt $deadline) { $left | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; return }
-    Start-Sleep -Milliseconds 500
-  }
 }
 
 # ---------- 확인 ----------
@@ -152,12 +129,12 @@ if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
   Ok "예약 작업 중지"
 }
 # 트레이와 이 설치 폴더의 전용 node.exe 만 정리 (다른 프로그램은 건드리지 않음)
-Stop-LeaveFlow
+Stop-LeaveFlow $InstallDir
 
 # ---------- 폴더 ----------
 
 Step "설치 폴더 준비: $InstallDir"
-foreach ($d in @("", "data", "backups", "logs", "updates", "versions", "tools")) {
+foreach ($d in @("", "data", "backups", "logs", "updates", "versions")) {
   New-Item -ItemType Directory -Path (Join-Path $InstallDir $d) -Force | Out-Null
 }
 Ok "완료"
@@ -461,5 +438,5 @@ Write-Host ""
 Write-Host "작업 표시줄 오른쪽 알림 영역(트레이)의 파란 달력 아이콘에서 웹페이지 열기·종료를 할 수 있습니다."
 if ($NoAutoStart) { Write-Host "Windows 에 로그인해도 자동으로 켜지지 않습니다. 'leave-flow 휴가원 관리' 바로가기(시작 메뉴)로 켭니다." }
 else { Write-Host "Windows 에 로그인하면 자동으로 켜지고, 종료한 뒤에는 'leave-flow 휴가원 관리' 바로가기(시작 메뉴)로 다시 켭니다." }
-Write-Host "처음 설정 순서: 관리 > 휴가 종류 → 설정 → 직원 → 기존 잔여량 → 부여 내역"
+Write-Host "처음 설정 순서: 관리 > 휴가 종류 → 설정 → 직원 → 기존 잔여량 → 부여 내역 → 공휴일·휴무일"
 Write-Host "자세한 내용: $versionDir\docs\index.md"

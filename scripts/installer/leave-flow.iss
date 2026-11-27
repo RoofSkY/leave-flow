@@ -44,8 +44,9 @@ Name: "desktopicon"; Description: "바탕화면 바로가기 만들기"
 [Files]
 ; 배포 파일은 임시 폴더에 풀고 install.ps1 이 설치 폴더로 옮김 (설치가 끝나면 임시 폴더는 지워짐)
 Source: "{#SourceDir}\*"; DestDir: "{tmp}\release"; Flags: recursesubdirs ignoreversion
-; 제거할 때 실행 (앱 및 기능 → 제거)
+; 제거할 때 실행 (앱 및 기능 → 제거). uninstall.ps1 이 같은 폴더의 common.ps1 을 불러옴
 Source: "{#SourceDir}\scripts\uninstall.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\scripts\common.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
 [Run]
 ; 트레이가 이미 켜져 있으므로 웹페이지만 열림

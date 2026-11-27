@@ -2,7 +2,6 @@ import { settingsInput } from "@leave-flow/shared";
 import type { FastifyInstance } from "fastify";
 import type { AppContext } from "../context.ts";
 import { transaction } from "../db/index.ts";
-import { badRequest } from "../lib/errors.ts";
 import { clientIp, parseInput } from "../lib/http.ts";
 import { writeAudit } from "../services/audit.ts";
 import { getSettings, saveSettings } from "../services/settings.ts";
@@ -12,13 +11,9 @@ export function registerSettingsRoutes(app: FastifyInstance, ctx: AppContext): v
 
   app.get("/settings", async () => getSettings(db));
 
-  // 보낸 항목만 바꿈 (설정 화면의 섹션별 저장)
   app.put("/settings", async (req) => {
     const input = parseInput(settingsInput, req.body);
     return transaction(db, () => {
-      if (input.defaultWorkStart === undefined || input.defaultWorkEnd === undefined) {
-        throw badRequest("바꿀 설정이 없습니다.");
-      }
       const before = getSettings(db);
       saveSettings(db, input);
       const after = getSettings(db);

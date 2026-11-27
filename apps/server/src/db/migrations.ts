@@ -243,4 +243,12 @@ ALTER TABLE leave_requests ADD COLUMN no_deduct INTEGER NOT NULL DEFAULT 0 CHECK
 ALTER TABLE leave_request_items ADD COLUMN manual_minutes INTEGER;
 `,
   },
+  {
+    version: 4,
+    name: "drop_print_logs",
+    sql: `
+-- 출력 기록 표는 쓰기만 하고 읽는 곳이 없었음. 최근 출력일시는 문서의 last_printed_at, 출력 이력은 audit_logs(action = print)
+DROP TABLE print_logs;
+`,
+  },
 ];

@@ -19,27 +19,12 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "common.ps1")
 $TaskName = "leave-flow"
 $FirewallRule = "leave-flow"
 
 function Step($msg) { Write-Host ""; Write-Host "==> $msg" -ForegroundColor Cyan }
 function Ok($msg) { Write-Host "    $msg" -ForegroundColor Green }
-# 트레이(tray.ps1)를 끄면 launcher 가 서버와 함께 정상 종료함. 15초 안에 끝나지 않으면 이 설치 폴더의 node 만 강제 종료
-function Stop-LeaveFlow {
-  $trayScript = Join-Path $InstallDir "tray.ps1"
-  Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($trayScript, [StringComparison]::OrdinalIgnoreCase) -ge 0 } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-  $nodeDir = Join-Path $InstallDir "node"
-  $deadline = (Get-Date).AddSeconds(15)
-  for (;;) {
-    $left = @(Get-Process -Name node -ErrorAction SilentlyContinue |
-      Where-Object { $_.Path -and $_.Path.StartsWith($nodeDir, [StringComparison]::OrdinalIgnoreCase) })
-    if ($left.Count -eq 0) { return }
-    if ((Get-Date) -gt $deadline) { $left | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; return }
-    Start-Sleep -Milliseconds 500
-  }
-}
 
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -66,7 +51,7 @@ if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
   Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
   Ok "예약 작업 삭제"
 }
-Stop-LeaveFlow
+Stop-LeaveFlow $InstallDir
 $shortcutPath = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\leave-flow 휴가원 관리.lnk"
 if (Test-Path $shortcutPath) {
   Remove-Item -Path $shortcutPath -Force

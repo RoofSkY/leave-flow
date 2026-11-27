@@ -1,6 +1,14 @@
 // 여러 화면이 함께 쓰는 서버 데이터 조회 (TanStack Query). 키는 qk 로만 만들 것.
 import { useQuery, type QueryClient } from "@tanstack/react-query";
-import type { BalanceRow, Category, Department, Employee, Holiday, LeaveType, Settings } from "@leave-flow/shared";
+import type {
+  BalanceRow,
+  Category,
+  Department,
+  Employee,
+  Holiday,
+  LeaveType,
+  Settings,
+} from "@leave-flow/shared";
 import { api, qs } from "./api.ts";
 
 export const qk = {

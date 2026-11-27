@@ -34,10 +34,9 @@ export function getSettings(db: Db): Settings {
   };
 }
 
-/** 보낸 항목만 저장 */
-export function saveSettings(db: Db, s: Partial<Settings>): void {
-  if (s.defaultWorkStart !== undefined) setValue(db, WORK_START_KEY, s.defaultWorkStart);
-  if (s.defaultWorkEnd !== undefined) setValue(db, WORK_END_KEY, s.defaultWorkEnd);
+export function saveSettings(db: Db, s: Settings): void {
+  setValue(db, WORK_START_KEY, s.defaultWorkStart);
+  setValue(db, WORK_END_KEY, s.defaultWorkEnd);
 }
 
 /** 시스템 상태 값 키 (백업·업데이트 기록) */

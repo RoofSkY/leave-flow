@@ -395,16 +395,6 @@ export function recordUpdateOutcome(ctx: AppContext): void {
 
 /** setTimeout 이 받을 수 있는 가장 긴 시간. 이보다 길거나 NaN 이면 Node 가 1ms 로 바꿔 계속 실행됨 */
 const MAX_TIMER_MS = 2_147_483_647;
-const DEFAULT_CHECK_HOURS = 6;
-/** 확인 주기 상한 24일 (MAX_TIMER_MS 보다 짧음) */
-const MAX_CHECK_HOURS = 24 * 24;
-
-/** config.updateCheckHours → 확인 주기(ms). 숫자가 아니거나 0 이하면 6시간, 그 밖에는 1시간~24일 */
-export function updateCheckPeriodMs(hours: unknown): number {
-  const h = typeof hours === "number" || typeof hours === "string" ? Number(hours) : Number.NaN;
-  const bounded = Number.isFinite(h) && h > 0 ? Math.min(Math.max(h, 1), MAX_CHECK_HOURS) : DEFAULT_CHECK_HOURS;
-  return Math.min(bounded * 3_600_000, MAX_TIMER_MS);
-}
 
 const checking = new WeakSet<AppContext>();
 
@@ -456,7 +446,8 @@ export function startUpdateScheduler(ctx: AppContext, requestExit: (code: number
   later(record, RECORD_DELAY_MS);
 
   if (!updatesDisabledReason(ctx) && existsSync(path.join(ctx.config.homeDir, "state.json"))) {
-    const periodMs = updateCheckPeriodMs(ctx.config.updateCheckHours);
+    // loadConfig 가 1~576시간으로 맞춰 둠
+    const periodMs = ctx.config.updateCheckHours * 3_600_000;
     const run = () => {
       void runScheduledUpdateCheck(ctx, requestExit)
         .catch((err: unknown) =>

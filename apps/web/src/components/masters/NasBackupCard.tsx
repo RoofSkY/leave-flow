@@ -44,7 +44,7 @@ export function NasBackupCard() {
           <Field
             label="공유폴더 주소"
             error={error}
-            hint="출결 PC에 로그인한 Windows 계정으로 NAS에 접근합니다. 저장이 실패하면 그 계정으로 탐색기에서 NAS 폴더가 열리는지 확인하세요. (운영가이드 「NAS 백업 설정과 계정」 참고)"
+            hint="출결 PC에 로그인한 Windows 계정으로 NAS에 접근합니다. 저장이 실패하면 그 계정으로 탐색기에서 NAS 폴더가 열리는지 확인하세요. (문서 「백업과 복구 → NAS 백업」 참고)"
           >
             <TextInput
               value={value}

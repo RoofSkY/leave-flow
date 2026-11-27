@@ -3,7 +3,7 @@ import path from "node:path";
 import { isTimeString } from "@leave-flow/shared";
 
 // 5000번은 같은 PC의 auto-ansimtalk가 사용하므로 금지
-const DEFAULT_PORT = 80;
+const DEFAULT_PORT = 8082;
 const FORBIDDEN_PORTS = new Set([5000]);
 
 export interface Config {

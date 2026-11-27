@@ -33,8 +33,6 @@ export function registerOvertimeRoutes(app: FastifyInstance, ctx: AppContext): v
     });
   });
 
-  app.get("/overtime/:id", async (req) => findOvertime(ctx.db, parseId(req.params)));
-
   app.post("/overtime", async (req, reply) =>
     reply.status(201).send(createOvertime(ctx, clientIp(req), req.body)),
   );
