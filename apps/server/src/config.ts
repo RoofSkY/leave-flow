@@ -28,9 +28,6 @@ export interface Config {
   autoUpdate: boolean;
   /** 업데이트 확인 주기(시간) */
   updateCheckHours: number;
-  /** 법정공휴일 자동 등록 범위: 올해 기준 앞뒤 몇 년 */
-  holidayYearsBefore: number;
-  holidayYearsAfter: number;
   /**
    * API 접속을 허용할 추가 호스트 이름 (소문자, 포트 제외. 예: ["leave.office.lan"]).
    * IP 주소·localhost·이 PC 이름은 항상 허용. 그 밖의 이름으로 접속하면 403 (DNS 리바인딩 차단).
@@ -120,8 +117,6 @@ export function loadConfig(
     updateRepo: /^[\w.-]+\/[\w.-]+$/.test(repo) ? repo : null,
     autoUpdate: file.autoUpdate ?? true,
     updateCheckHours: checkUpdateHours(file.updateCheckHours),
-    holidayYearsBefore: 1,
-    holidayYearsAfter: 2,
     allowedHosts: Array.isArray(file.allowedHosts)
       ? file.allowedHosts
           .filter((h): h is string => typeof h === "string")

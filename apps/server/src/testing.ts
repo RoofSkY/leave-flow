@@ -26,8 +26,6 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     updateRepo: null,
     autoUpdate: false,
     updateCheckHours: 6,
-    holidayYearsBefore: 1,
-    holidayYearsAfter: 2,
     allowedHosts: [],
     logger: false,
     ...overrides,

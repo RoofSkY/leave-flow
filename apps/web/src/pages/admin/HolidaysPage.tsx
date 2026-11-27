@@ -53,10 +53,7 @@ export function HolidaysPage() {
   const restore = useMutation({
     mutationFn: (h: Holiday) => api.post<HolidayChangeResult>(`/api/holidays/${h.id}/restore`),
   });
-  const sync = useMutation({
-    mutationFn: () => api.post<{ added: number; recalculated: RecalcChange[] }>("/api/holidays/sync"),
-  });
-  const busy = add.isPending || remove.isPending || restore.isPending || sync.isPending;
+  const busy = add.isPending || remove.isPending || restore.isPending;
 
   const onAdd = async (input: HolidayInput): Promise<boolean> => {
     try {
@@ -106,16 +103,6 @@ export function HolidaysPage() {
     }
   };
 
-  const onSync = async () => {
-    try {
-      const result = await sync.mutateAsync();
-      toast(result.added > 0 ? `법정공휴일 ${result.added}건을 새로 등록했습니다.` : "새로 등록할 법정공휴일이 없습니다.");
-      await afterChange(result.recalculated);
-    } catch (err) {
-      toast(errorMessage(err), "error");
-    }
-  };
-
   const rows = holidays.data ?? [];
   const activeRows = rows.filter((h) => h.active);
   const publicDays = new Set(activeRows.filter((h) => h.kind === "public").map((h) => h.date)).size;
@@ -123,21 +110,10 @@ export function HolidaysPage() {
 
   return (
     <div className="stack">
-      <PageHeader
-        title="공휴일·휴무일"
-        actions={
-          <Button
-            onClick={onSync}
-            disabled={busy}
-            title="빠진 법정공휴일을 다시 등록합니다. 직접 삭제한 공휴일은 되살리지 않습니다."
-          >
-            {sync.isPending ? "불러오는 중…" : "자동 공휴일 다시 불러오기"}
-          </Button>
-        }
-      />
+      <PageHeader title="공휴일·휴무일" />
       <Callout tone="info">
         <div>
-          법정공휴일은 자동으로 등록됩니다. 선거일·임시공휴일처럼 빠진 날과 센터 휴무일은 아래에서 직접 추가하세요.
+          공휴일과 센터 휴무일은 아래에서 직접 추가하세요.
           <br />
           추가하거나 삭제하면 아직 지나지 않은 휴가원의 사용 시간이 자동으로 다시 계산됩니다.
         </div>
@@ -162,7 +138,7 @@ export function HolidaysPage() {
         <ErrorText error={holidays.error} />
       ) : rows.length === 0 ? (
         <EmptyState title={`${year}년에 등록된 공휴일·휴무일이 없습니다.`}>
-          <span>법정공휴일은 올해 기준 앞뒤 몇 년치만 자동으로 등록됩니다. 필요한 날은 위에서 직접 추가하세요.</span>
+          <span>필요한 날은 위에서 직접 추가하세요.</span>
         </EmptyState>
       ) : (
         <div className="table-wrap">

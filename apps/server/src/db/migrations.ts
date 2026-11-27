@@ -1,7 +1,7 @@
 // DB 구조 변경은 여기에 버전을 하나씩 추가한다. 이미 배포된 버전의 SQL은 절대 수정하지 않는다.
 // 시각은 시간대 없는 로컬 문자열("YYYY-MM-DD", "HH:MM", "YYYY-MM-DDTHH:MM"),
 // 기록용 일시(created_at 등)는 로컬 "YYYY-MM-DD HH:MM:SS".
-// 처음 설치 시 모든 테이블은 비어 있다 (휴가 종류도 미리 넣지 않음). 법정공휴일만 서버 시작 시 자동 등록.
+// 처음 설치 시 모든 테이블은 비어 있다 (휴가 종류·공휴일도 미리 넣지 않음).
 
 interface Migration {
   version: number;

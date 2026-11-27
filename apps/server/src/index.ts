@@ -6,7 +6,6 @@ import { loadConfig } from "./config.ts";
 import { createContext } from "./context.ts";
 import { openDatabase } from "./db/index.ts";
 import { applyPendingRestore, startBackupScheduler } from "./services/backup.ts";
-import { startHolidaySync } from "./services/holidays.ts";
 import { startUpdateScheduler } from "./services/updater.ts";
 import { APP_VERSION } from "./version.ts";
 
@@ -53,7 +52,6 @@ const requestExit = (code: number) => {
 
 const app = await buildApp(ctx, { requestExit });
 
-stoppers.push(startHolidaySync(ctx));
 stoppers.push(startBackupScheduler(ctx));
 stoppers.push(startUpdateScheduler(ctx, requestExit));
 

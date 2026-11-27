@@ -11,7 +11,6 @@
   "dependencies": {
     "@fastify/static": "^10.1.6",
     "@leave-flow/shared": "^0.1.0",
-    "date-holidays": "^3.37.0",
     "exceljs": "^4.4.0",
     "fastify": "^5.12.7",
     "fflate": "^0.8.3",

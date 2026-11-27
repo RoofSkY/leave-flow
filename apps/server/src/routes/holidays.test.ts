@@ -188,7 +188,7 @@ describe("DELETE /api/holidays/:id", () => {
     expect(JSON.parse(String(audit!.before_json))).toMatchObject({ date: "2026-10-28", name: "체육대회" });
   });
 
-  it("자동 등록분은 active = 0 (재등록 방지), 다시 지우면 409, 없으면 404", async () => {
+  it("자동 등록분은 active = 0 (되살릴 수 있게), 다시 지우면 409, 없으면 404", async () => {
     const { app, db } = await setup();
     const id = insertHoliday(db, { date: "2026-10-28", name: "임시공휴일", source: "auto" });
 
@@ -224,25 +224,5 @@ describe("POST /api/holidays/:id/restore", () => {
 
     expect((await app.inject({ method: "POST", url: `/api/holidays/${id}/restore` })).statusCode).toBe(409);
     expect((await app.inject({ method: "POST", url: "/api/holidays/9999/restore" })).statusCode).toBe(404);
-  });
-});
-
-describe("POST /api/holidays/sync", () => {
-  it("법정공휴일을 등록하고 재계산, 다시 실행하면 추가 없음", async () => {
-    const { app, db, emp, type } = await setup();
-    // 12/24(목) ~ 12/25(금) 2일 → 성탄절 등록 후 1일
-    const xmas = insertLeave(db, emp, type, "2026-12-24T10:00", "2026-12-25T19:00", 960);
-
-    const res = await app.inject({ method: "POST", url: "/api/holidays/sync" });
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as { added: number; recalculated: unknown[] };
-    expect(body.added).toBeGreaterThan(50);
-    expect(body.recalculated).toHaveLength(1);
-    expect(itemMinutes(db, xmas)).toBe(480);
-    expect(queryAll(db, "SELECT * FROM audit_logs WHERE entity = 'holiday' AND action = 'create'")).toHaveLength(1);
-
-    const again = await app.inject({ method: "POST", url: "/api/holidays/sync" });
-    expect(again.json()).toEqual({ added: 0, recalculated: [] });
-    expect(queryAll(db, "SELECT * FROM audit_logs WHERE entity = 'holiday'")).toHaveLength(1);
   });
 });

@@ -11,7 +11,6 @@ import { execute, queryAll, queryOne, transaction } from "../db/index.ts";
 import { conflict, notFound } from "../lib/errors.ts";
 import { clientIp, dateQuery, parseId, parseInput, queryBool } from "../lib/http.ts";
 import { writeAudit } from "../services/audit.ts";
-import { runHolidaySync } from "../services/holidays.ts";
 import { holidayFromRow } from "../services/queries.ts";
 import { recalcFutureRequests } from "../services/recalc.ts";
 
@@ -155,7 +154,4 @@ export function registerHolidayRoutes(app: FastifyInstance, ctx: AppContext): vo
       return { holiday, recalculated: recalc(ip, `${holidayLabel(holiday)} 되살리기`) };
     });
   });
-
-  // POST /api/holidays/sync → { added, recalculated } (법정공휴일 자동 등록 다시 실행)
-  app.post("/holidays/sync", async (req) => runHolidaySync(ctx, clientIp(req)));
 }
