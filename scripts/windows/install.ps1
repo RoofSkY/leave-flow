@@ -61,11 +61,11 @@ function Read-Json($path) {
   if (-not (Test-Path $path)) { return $null }
   try { return (Get-Content -Path $path -Raw -Encoding UTF8 | ConvertFrom-Json) } catch { return $null }
 }
-function Version-Key($v) {
+function Get-VersionKey($v) {
   try { return [version](($v -replace '^v', '') -replace '-.*$', '') } catch { return [version]"0.0.0" }
 }
 # 설치 폴더 기준 경로 (절대 경로면 그대로 — 서버 config.ts 와 같은 규칙)
-function Home-Path($value, $default) {
+function Resolve-HomePath($value, $default) {
   $p = $default
   if ($value) { $p = [string]$value }
   return [IO.Path]::GetFullPath([IO.Path]::Combine($InstallDir, $p))
@@ -100,7 +100,7 @@ if ($ReleaseZip) {
   }
   if (-not $source) {
     $zip = Get-ChildItem -Path @($PSScriptRoot, (Split-Path $PSScriptRoot -Parent)) -Filter "leave-flow-*.zip" -File -ErrorAction SilentlyContinue |
-      Sort-Object { Version-Key ($_.BaseName -replace '^leave-flow-', '') } -Descending |
+      Sort-Object { Get-VersionKey ($_.BaseName -replace '^leave-flow-', '') } -Descending |
       Select-Object -First 1 -ExpandProperty FullName
     if (-not $zip) { Fail "배포 파일(leave-flow-<버전>.zip)을 찾을 수 없습니다. -ReleaseZip 으로 지정하세요." }
   }
@@ -257,9 +257,9 @@ if (-not $state -or [string]$state.current -ne $Version) {
   # 버전을 바꾸면 업데이트 전 DB 백업을 만들어 둠 → 새 버전이 정상 기동하지 않으면 launcher 가 되돌리면서 이 백업도 복구
   # (새 버전이 시작하면서 DB 구조를 바꿨을 수 있으므로). 이름은 서버 백업 규칙(leave-flow-날짜-시각-pre-update.db)과 같게.
   $preUpdateBackup = $null
-  $dbFile = Join-Path (Home-Path $config.dataDir "data") "leave-flow.db"
+  $dbFile = Join-Path (Resolve-HomePath $config.dataDir "data") "leave-flow.db"
   if ($previous -and (Test-Path $dbFile)) {
-    $backupDir = Home-Path $config.backupDir "backups"
+    $backupDir = Resolve-HomePath $config.backupDir "backups"
     New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
     $base = "leave-flow-" + (Get-Date -Format "yyyyMMdd-HHmmss") + "-pre-update"
     $target = Join-Path $backupDir "$base.db"
@@ -296,9 +296,9 @@ try {
   # (그보다 높은 새 버전이 나오면 자동으로 설치됨. launcher 는 current 가 failedVersion 보다 낮으면 이 기록을 지우지 않음)
   $failedVersion = $null
   $lastUpdateError = $null
-  if ($previous -and ((Version-Key $Version) -lt (Version-Key $previous))) {
+  if ($previous -and ((Get-VersionKey $Version) -lt (Get-VersionKey $previous))) {
     $failedVersion = $previous
-    if ($state.failedVersion -and ((Version-Key $state.failedVersion) -gt (Version-Key $previous))) {
+    if ($state.failedVersion -and ((Get-VersionKey $state.failedVersion) -gt (Get-VersionKey $previous))) {
       $failedVersion = [string]$state.failedVersion
       $lastUpdateError = $state.lastUpdateError
     }
@@ -392,7 +392,7 @@ Start-ScheduledTask -TaskName $TaskName
 Step "서버 시작 확인"
 # 설치한 버전이 응답해야 성공. 새 버전이 시험 기동(60초)에 실패하면 launcher 가 이전 버전으로 되돌리므로
 # 그 시간과 다시 시작하는 시간까지 기다리고, 다른 버전이 응답하면 되돌린 것으로 알림.
-$healthUrl = Health-Url $config.host $Port
+$healthUrl = Get-HealthUrl $config.host $Port
 $healthy = $null
 $other = $null
 $rolledBack = $false

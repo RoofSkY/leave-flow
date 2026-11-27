@@ -5,7 +5,7 @@
 #>
 
 # 서버 상태 확인 주소 (launcher/state.mjs healthUrl 과 같은 규칙: 모든 주소에서 받으면 127.0.0.1, IPv6 는 [ ])
-function Health-Url($cfgHost, $port) {
+function Get-HealthUrl($cfgHost, $port) {
   $h = ""
   if ($cfgHost) { $h = ([string]$cfgHost).Trim() }
   if ($h -eq "" -or $h -eq "0.0.0.0" -or $h -eq "::" -or $h -eq "[::]") { $h = "127.0.0.1" }

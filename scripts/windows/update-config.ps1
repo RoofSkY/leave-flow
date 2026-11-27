@@ -41,7 +41,7 @@ $FirewallRule = "leave-flow"
 
 function Fail($msg) { Write-Host "설정을 바꾸지 못했습니다: $msg" -ForegroundColor Red; exit 1 }
 # 끄기를 뜻하는 값 (빈 값은 PowerShell 5.1 에서 전달되지 않으므로 none/off 도 받음)
-function Is-Off($value) { return (-not $value) -or ([string]$value).Trim() -in @("none", "off", "null") }
+function Test-Off($value) { return (-not $value) -or ([string]$value).Trim() -in @("none", "off", "null") }
 
 if ($DisableNas -and $PSBoundParameters.ContainsKey("NasBackupDir")) { Fail "-DisableNas 와 -NasBackupDir 는 함께 쓸 수 없습니다." }
 if ($DisableUpdates -and $PSBoundParameters.ContainsKey("UpdateRepo")) { Fail "-DisableUpdates 와 -UpdateRepo 는 함께 쓸 수 없습니다." }
@@ -76,12 +76,12 @@ if ($PSBoundParameters.ContainsKey("Port")) {
 if ($DisableNas) {
   Set-Value "nasBackupDir" $null
 } elseif ($PSBoundParameters.ContainsKey("NasBackupDir")) {
-  if (Is-Off $NasBackupDir) { Set-Value "nasBackupDir" $null } else { Set-Value "nasBackupDir" $NasBackupDir.Trim() }
+  if (Test-Off $NasBackupDir) { Set-Value "nasBackupDir" $null } else { Set-Value "nasBackupDir" $NasBackupDir.Trim() }
 }
 if ($DisableUpdates) {
   Set-Value "updateRepo" $null
 } elseif ($PSBoundParameters.ContainsKey("UpdateRepo")) {
-  if (Is-Off $UpdateRepo) {
+  if (Test-Off $UpdateRepo) {
     Set-Value "updateRepo" $null
   } else {
     if ($UpdateRepo.Trim() -notmatch '^[\w.-]+/[\w.-]+$') { Fail "업데이트 저장소는 'owner/repo' 형식으로 입력하세요." }
@@ -118,7 +118,7 @@ if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
   Fail "등록된 예약 작업이 없습니다. install.ps1 로 다시 설치하세요."
 }
 
-$healthUrl = Health-Url $config.host $newPort
+$healthUrl = Get-HealthUrl $config.host $newPort
 $deadline = (Get-Date).AddSeconds(60)
 while ((Get-Date) -lt $deadline) {
   try {
